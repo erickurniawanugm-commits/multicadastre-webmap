@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8" />
+    <title>SIPN - Sistem Informasi Pertanahan Nasional</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- MapLibre & Turf JS -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet">
+    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+
+    <!-- Mapbox Draw -->
+    <script>window.mapboxgl = maplibregl;</script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css" />
+
+    <style>
+        body { margin:0; padding:0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; background: #f4f6f9; }
+
+        /* HEADER BPN STYLING */
+        #header { 
+            height: 60px; 
+            background: linear-gradient(90deg, #002B49 0%, #001F35 100%); 
+            color: white; 
+            display: flex; 
+            align-items: center; 
+            padding: 0 20px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); 
+            z-index: 50; 
+            position: relative; 
+            border-bottom: 3px solid #E5A823;
+        }
+        #header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.8px; color: #ffffff; }
+        #header span { font-size: 13px; color: #E5A823; margin-left: 12px; font-weight: 400; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px; }
+
+        /* LAYOUT */
+        #map { width: 100vw; height: calc(100vh - 60px); position: relative; }
+        #sidebar { 
+            position: absolute; top: 60px; left: 0; width: 330px; height: calc(100vh - 60px); 
+            background: #ffffff; padding: 18px; z-index: 40; border-right: 1px solid #dcdfe6; 
+            box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; 
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+        }
+        #sidebar h3 { margin: 0 0 8px 0; color: #002B49; border-bottom: 2px solid #E5A823; padding-bottom: 5px; font-size: 14px; font-weight: 700; text-transform: uppercase; }
+
+        /* LAYER TOGGLE LIST */
+        .layer-toggle-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; }
+        .layer-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 13px; font-weight: 600; color: #334155; }
+        .layer-item:last-child { border-bottom: none; }
+        .layer-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #002B49; }
+
+        /* TOMBOL CUSTOM */
+        .btn { padding: 8px 12px; background: white; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; color: #444; transition: 0.2s; }
+        .btn:hover { background: #f0f0f0; }
+        .btn-primary { background: #002B49; color: white; border: none; }
+        .btn-primary:hover { background: #00406c; }
+        .btn-danger { background: #e74c3c; color: white; border: none; }
+        .btn-ogc { background: #27ae60; color: white; border: none; width: 100%; margin-top: 5px;}
+        .btn-ogc:hover { background: #219150; }
+        
+        .draw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        .btn-tool { text-align: center; padding: 8px; border: 1px solid #002B49; color: #002B49; background: #f4f8fb; }
+        .btn-tool:hover { background: #002B49; color: white; }
+
+        /* PANELS */
+        #info-panel, #measure-result, #ogc-panel { background: white; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .info-placeholder { color: #94a3b8; font-style: italic; text-align: center; margin: 10px 0; font-size: 12px; }
+        .info-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .info-table td { padding: 5px 0; border-bottom: 1px solid #f1f5f9; }
+        .info-table td:first-child { font-weight: 600; color: #002B49; width: 40%; }
+
+        /* LEGENDA & POPUP */
+        .legend-item { display: flex; align-items: center; margin-bottom: 6px; font-size: 12px; color: #475569; }
+        .legend-box { width: 14px; height: 14px; margin-right: 8px; border-radius: 2px; }
+        .maplibregl-popup-content { font-family: 'Segoe UI', sans-serif; border-radius: 6px; padding: 0; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.25); max-width: 280px; }
+        .popup-header { background: #002B49; color: #E5A823; padding: 8px 12px; font-weight: bold; font-size: 13px; }
+        .popup-body { padding: 12px; background: white; }
+        .popup-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; border-bottom: 1px dashed #eee; padding-bottom: 3px; }
+        .popup-label { color: #002B49; font-weight: 600; margin-right: 10px; }
+
+        /* BASEMAP CONTROL */
+        #basemap-control { position: absolute; bottom: 25px; right: 15px; z-index: 50; background: white; padding: 4px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: flex; gap: 4px; }
+        .btn-map { padding: 6px 12px; border: 1px solid #cbd5e1; background: white; cursor: pointer; border-radius: 4px; font-size: 12px; font-weight: 600; color: #475569; }
+        .btn-map.active { background: #002B49; color: #E5A823; border-color: #002B49; }
+    </style>
+</head>
+
+<body>
+
+<div id="header">
+    <h1>SIPN</h1>
+    <span>Sistem Informasi Pertanahan Nasional (BPN)</span>
+</div>
+
+<div id="sidebar">
+    <!-- PENCARIAN -->
+    <div>
+        <h3>Pencarian NIB</h3>
+        <div style="display:flex; gap:5px;">
+            <input id="searchBox" type="text" placeholder="Masukkan NIB (misal: 00551)" style="flex:1; padding:7px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+            <button class="btn btn-primary" onclick="searchNIB()">Cari</button>
+        </div>
+    </div>
+
+    <!-- LAYER MANAGEMENT (SHOW / HIDE) -->
+    <div>
+        <h3>Manajemen Layer</h3>
+        <div class="layer-toggle-container">
+            <label class="layer-item">
+                <span>🔴 Bidang Tanah</span>
+                <input type="checkbox" id="chk-bidang" checked onchange="toggleLayerGroup(['bidang-fill', 'bidang-outline', 'bidang-highlight'], this.checked)">
+            </label>
+            <label class="layer-item">
+                <span>🟣 Objek Pajak</span>
+                <input type="checkbox" id="chk-pajak" checked onchange="toggleLayerGroup(['pajak-fill', 'pajak-line'], this.checked)">
+            </label>
+            <label class="layer-item">
+                <span>🟠 Zona Nilai Tanah (ZNT)</span>
+                <input type="checkbox" id="chk-znt" checked onchange="toggleLayerGroup(['znt-fill', 'znt-line'], this.checked)">
+            </label>
+            <label class="layer-item">
+                <span>🏢 Bangunan 3D</span>
+                <input type="checkbox" id="chk-bangunan" checked onchange="toggleLayerGroup(['bangunan-3d'], this.checked)">
+            </label>
+        </div>
+    </div>
+
+    <!-- OGC API PANEL -->
+    <div>
+        <h3>Layer OGC API</h3>
+        <div id="ogc-panel">
+            <div style="font-size:11px; color:#64748b; margin-bottom:5px;">URL OGC API Features:</div>
+            <input id="ogcUrl" type="text" placeholder="https://.../items?f=json" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px; box-sizing:border-box; font-size:11px;">
+            <button class="btn btn-ogc" onclick="loadUserOGC()">Load Data API</button>
+            <hr style="margin:8px 0; border:0; border-top:1px dashed #e2e8f0;">
+            <button class="btn" style="width:100%; font-size:11px;" onclick="loadDemoOGC()">🌐 Test Demo Server</button>
+        </div>
+    </div>
+
+    <!-- TOOLS DRAWING -->
+    <div>
+        <h3>Pengukuran & Penggambaran</h3>
+        <div class="draw-grid">
+            <button class="btn btn-tool" onclick="startDraw('draw_point')">📍 Titik</button>
+            <button class="btn btn-tool" onclick="startDraw('draw_line_string')">📏 Garis</button>
+            <button class="btn btn-tool" onclick="startDraw('draw_polygon')">⬠ Poligon</button>
+            <button class="btn btn-tool" onclick="deleteSelected()" style="color:#e74c3c; border-color:#e74c3c;">🗑️ Hapus</button>
+        </div>
+        <div id="measure-result">
+            <div class="info-placeholder">Hasil ukur akan tampil di sini.</div>
+        </div>
+        <div style="text-align:right;">
+            <button class="btn btn-danger" onclick="downloadDrawings()">💾 Simpan GeoJSON</button>
+        </div>
+    </div>
+    
+    <!-- INFO PANEL -->
+    <div>
+        <h3>Informasi Objek</h3>
+        <div id="info-panel">
+            <div class="info-placeholder">Klik objek pada peta untuk melihat informasi detail.</div>
+        </div>
+    </div>
+
+    <!-- LEGENDA -->
+    <div style="margin-top: auto; padding-top:10px;">
+        <h3>Legenda</h3>
+        <div class="legend-item"><span class="legend-box" style="background: rgba(231, 76, 60, 0.3); border: 1px solid #e74c3c;"></span> Bidang Tanah</div>
+        <div class="legend-item"><span class="legend-box" style="background: rgba(155, 89, 182, 0.3); border: 1px solid #8e44ad;"></span> Objek Pajak</div>
+        <div class="legend-item"><span class="legend-box" style="background: rgba(243, 156, 18, 0.25); border: 1px dashed #d35400;"></span> Zona Nilai Tanah (ZNT)</div>
+        <div class="legend-item"><span class="legend-box" style="background: #95a5a6;"></span> Bangunan 3D</div>
+    </div>
+</div>
+
+<!-- BASEMAP SWITCHER -->
+<div id="basemap-control">
+    <button class="btn-map active" onclick="setBasemap('osm', this)">OSM</button>
+    <button class="btn-map" onclick="setBasemap('esri', this)">Satelit</button>
+</div>
+
+<div id="map"></div>
+
+<script>
+// 1. INITIALIZE MAP
+const map = new maplibregl.Map({
+    container: "map",
+    center: [110.367, -7.795],
+    zoom: 16,
+    pitch: 45,
+    bearing: -10,
+    style: {
+        version: 8,
+        sources: { basemap: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256 } },
+        layers: [{ id: "basemap-layer", type: "raster", source: "basemap" }]
+    }
+});
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+// 2. DRAWING TOOLS SETUP
+const draw = new MapboxDraw({
+    displayControlsDefault: false,
+    controls: { point: false, line_string: false, polygon: false, trash: false },
+    styles: [
+        { 'id': 'gl-draw-line', 'type': 'line', 'filter': ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']], 'paint': { 'line-color': '#e74c3c', 'line-width': 3 } },
+        { 'id': 'gl-draw-polygon-fill', 'type': 'fill', 'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']], 'paint': { 'fill-color': '#002B49', 'fill-opacity': 0.3 } },
+        { 'id': 'gl-draw-polygon-stroke', 'type': 'line', 'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']], 'paint': { 'line-color': '#002B49', 'line-width': 2 } },
+        { 'id': 'gl-draw-point', 'type': 'circle', 'filter': ['all', ['==', '$type', 'Point'], ['!=', 'mode', 'static']], 'paint': { 'circle-radius': 6, 'circle-color': '#E5A823' } }
+    ]
+});
+map.addControl(draw);
+
+function startDraw(mode) { draw.changeMode(mode); }
+function deleteSelected() { draw.trash(); updateDrawInfo(); }
+map.on('draw.create', updateDrawInfo);
+map.on('draw.delete', updateDrawInfo);
+map.on('draw.update', updateDrawInfo);
+
+function updateDrawInfo() {
+    const data = draw.getAll();
+    const panel = document.getElementById('measure-result');
+    if (data.features.length > 0) {
+        let html = '<table class="info-table">';
+        data.features.forEach((feature, index) => {
+            let info = "";
+            let tipe = feature.geometry.type;
+            if (tipe === 'Polygon') info = `${Math.round(turf.area(feature))} m²`;
+            else if (tipe === 'LineString') info = `${(turf.length(feature, {units: 'kilometers'}) * 1000).toFixed(2)} m`;
+            else if (tipe === 'Point') info = `Lat: ${feature.geometry.coordinates[1].toFixed(5)}`;
+            html += `<tr><td>#${index+1} (${tipe})</td><td>${info}</td></tr>`;
+        });
+        html += '</table>';
+        panel.innerHTML = html;
+    } else {
+        panel.innerHTML = '<div class="info-placeholder">Hasil ukur akan tampil di sini.</div>';
+    }
+}
+
+function downloadDrawings() {
+    const data = draw.getAll();
+    if (data.features.length === 0) return alert("Belum ada gambar!");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"}));
+    a.download = "sipn_hasil_pengukuran.geojson";
+    a.click();
+}
+
+// 3. SHOW / HIDE LAYER TOGGLE FUNCTION
+function toggleLayerGroup(layerIds, isVisible) {
+    const visibility = isVisible ? 'visible' : 'none';
+    layerIds.forEach(id => {
+        if (map.getLayer(id)) {
+            map.setLayoutProperty(id, 'visibility', visibility);
+        }
+    });
+}
+
+// 4. BASEMAP SWITCHER
+function setBasemap(type, btnElement) {
+    const url = (type === "osm") ? "https://tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+    map.getSource("basemap").setTiles([url]);
+    document.querySelectorAll('.btn-map').forEach(b => b.classList.remove('active'));
+    if(btnElement) btnElement.classList.add('active');
+}
+
+// 5. LOAD SPATIAL DATA (BIDANG, OBJEK PAJAK, ZNT, KOTABARU2)
+let bidangData = null;
+let clickedStateId = null; 
+let clickedBuildingId = null; 
+let KamusGedung = {}; 
+let currentPopup = null; 
+
+map.on("load", () => {
+
+    // A. CITY OBJECT DICTIONARY
+    fetch("cityobject_data.json").then(r => r.json()).then(data => {
+        const items = data.features ? data.features : data;
+        items.forEach(item => { const p = item.properties ? item.properties : item; if(p.id) KamusGedung[String(p.id)] = p.name || "Tanpa Nama"; });
+    }).catch(e => console.log("cityobject_data missing"));
+
+    // B. ZONA NILAI TANAH (ZNT) LAYER - BOTTOM
+    fetch("ZNT.geojson").then(r => r.json()).then(data => {
+        map.addSource("znt", { type: "geojson", data: data });
+        map.addLayer({ id: "znt-fill", type: "fill", source: "znt", paint: { "fill-color": "#f39c12", "fill-opacity": 0.25 } });
+        map.addLayer({ id: "znt-line", type: "line", source: "znt", paint: { "line-color": "#d35400", "line-width": 1, "line-dasharray": [2, 2] } });
+    }).catch(e => console.log("ZNT.geojson missing"));
+
+    // C. OBJEK PAJAK LAYER - MIDDLE
+    fetch("ObjekPajak.geojson").then(r => r.json()).then(data => {
+        map.addSource("pajak", { type: "geojson", data: data });
+        map.addLayer({ id: "pajak-fill", type: "fill", source: "pajak", paint: { "fill-color": "#9b59b6", "fill-opacity": 0.3 } });
+        map.addLayer({ id: "pajak-line", type: "line", source: "pajak", paint: { "line-color": "#8e44ad", "line-width": 1.2 } });
+    }).catch(e => console.log("ObjekPajak.geojson missing"));
+
+    // D. BIDANG TANAH LAYER
+    fetch("BidangTanah.geojson").then(r => r.json()).then(data => {
+        bidangData = data;
+        map.addSource("bidang", { type: "geojson", data: data, promoteId: "NIB" });
+        map.addLayer({ id: "bidang-fill", type: "fill", source: "bidang", paint: { "fill-color": "#e74c3c", "fill-opacity": 0.25 } });
+        map.addLayer({ id: "bidang-outline", type: "line", source: "bidang", paint: { "line-color": "#c0392b", "line-width": 1.5 } });
+        map.addLayer({
+            id: "bidang-highlight", type: "line", source: "bidang",
+            paint: {
+                "line-color": ["case", ["boolean", ["feature-state", "selected"], false], "#00ffff", "transparent"],
+                "line-width": 4
+            }
+        });
+
+        // Fit map view to BidangTanah features
+        if (data.features && data.features.length > 0) {
+            map.fitBounds(turf.bbox(data), { padding: 50 });
+        }
+    }).catch(e => console.log("BidangTanah.geojson missing"));
+
+    // E. BANGUNAN 3D (kotabaru2) LAYER - TOP
+    fetch("kotabaru2.geojson").then(r => r.json()).then(dataBangunan => {
+        dataBangunan.features.forEach((feature, index) => { feature.id = index; }); 
+        map.addSource("bangunan", { type: "geojson", data: dataBangunan });
+        map.addLayer({
+            id: "bangunan-3d", type: "fill-extrusion", source: "bangunan",
+            paint: {
+                "fill-extrusion-color": ["case", ["boolean", ["feature-state", "selected"], false], "#e74c3c", "#95a5a6"],
+                "fill-extrusion-height": ["coalesce", ["get", "tinggi_z"], ["get", "height"], 5], 
+                "fill-extrusion-base": 0, 
+                "fill-extrusion-opacity": 0.85
+            }
+        });
+    }).catch(e => console.log("kotabaru2.geojson missing"));
+});
+
+// 6. MAP CLICK IDENTIFY FUNCTION
+map.on("click", (e) => {
+    if (draw.getMode() !== 'simple_select') return;
+
+    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['bangunan-3d'] });
+    const featuresTanah = map.queryRenderedFeatures(e.point, { layers: ['bidang-fill'] });
+    const featuresPajak = map.queryRenderedFeatures(e.point, { layers: ['pajak-fill'] });
+    const featuresZNT = map.queryRenderedFeatures(e.point, { layers: ['znt-fill'] });
+
+    // KLIK BANGUNAN 3D
+    if (featuresBangunan.length > 0) {
+        const feature = featuresBangunan[0];
+        if (clickedBuildingId !== null) map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: false });
+        clickedBuildingId = feature.id;
+        map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: true });
+
+        if (currentPopup) currentPopup.remove();
+        const props = feature.properties;
+        let linkId = String(props.id_cityobject || props.cityobject_id); 
+        let nama = (linkId && KamusGedung[linkId]) ? KamusGedung[linkId] : (props.gmlid || "Bangunan 3D");
+
+        const html = `<div class="popup-header">${nama}</div><div class="popup-body"><div class="popup-row"><span class="popup-label">Tinggi:</span><span>${props.tinggi_z || props.height || '-'} m</span></div><div class="popup-row"><span class="popup-label">ID Object:</span><span>${props.gmlid || '-'}</span></div></div>`;
+        currentPopup = new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+        return;
+    }
+
+    // KLIK BIDANG TANAH
+    if (featuresTanah.length > 0) {
+        const feature = featuresTanah[0];
+        if (clickedStateId !== null) map.setFeatureState({ source: "bidang", id: clickedStateId }, { selected: false });
+        clickedStateId = feature.id;
+        map.setFeatureState({ source: "bidang", id: clickedStateId }, { selected: true });
+
+        const props = feature.properties;
+        let rows = `<tr><td colspan="2" style="background:#f4f6f9; font-weight:bold; padding:4px;">[ Bidang Tanah ]</td></tr>`;
+        for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
+        document.getElementById('info-panel').innerHTML = `<table class="info-table">${rows}</table>`;
+        return; 
+    }
+
+    // KLIK OBJEK PAJAK
+    if (featuresPajak.length > 0) {
+        const props = featuresPajak[0].properties;
+        let rows = `<tr><td colspan="2" style="background:#f4f6f9; font-weight:bold; padding:4px;">[ Objek Pajak ]</td></tr>`;
+        for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
+        document.getElementById('info-panel').innerHTML = `<table class="info-table">${rows}</table>`;
+        return;
+    }
+
+    // KLIK ZNT
+    if (featuresZNT.length > 0) {
+        const props = featuresZNT[0].properties;
+        let rows = `<tr><td colspan="2" style="background:#f4f6f9; font-weight:bold; padding:4px;">[ Zona Nilai Tanah ]</td></tr>`;
+        for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
+        document.getElementById('info-panel').innerHTML = `<table class="info-table">${rows}</table>`;
+        return;
+    }
+
+    // CLEAR SELECTION
+    if (clickedBuildingId !== null) { map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: false }); clickedBuildingId = null; }
+    if (clickedStateId !== null) { map.setFeatureState({ source: "bidang", id: clickedStateId }, { selected: false }); clickedStateId = null; }
+    if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+    document.getElementById('info-panel').innerHTML = '<div class="info-placeholder">Klik objek pada peta untuk melihat informasi detail.</div>';
+});
+
+// 7. SEARCH BY NIB
+function searchNIB() {
+    const input = document.getElementById("searchBox").value.trim();
+    if (!input || !bidangData) return;
+    const found = bidangData.features.find(f => String(f.properties.NIB) === input);
+    if (!found) return alert("NIB tidak ditemukan");
+    
+    map.fitBounds(turf.bbox(found), { padding: 100 });
+    
+    let rows = `<tr><td colspan="2" style="background:#f4f6f9; font-weight:bold; padding:4px;">[ Bidang Tanah ]</td></tr>`;
+    for (const k in found.properties) { rows += `<tr><td>${k}</td><td>${found.properties[k]}</td></tr>`; }
+    document.getElementById('info-panel').innerHTML = `<table class="info-table">${rows}</table>`;
+
+    if (clickedStateId !== null) map.setFeatureState({ source: "bidang", id: clickedStateId }, { selected: false });
+    clickedStateId = found.properties.NIB;
+    map.setFeatureState({ source: "bidang", id: clickedStateId }, { selected: true });
+}
+document.getElementById("searchBox").addEventListener("keypress", (e) => { if(e.key==="Enter") searchNIB() });
+
+// 8. OGC API LOADER FUNCTIONS
+function loadOGCLayer(url) {
+    if (map.getSource('ogc-source')) {
+        map.removeLayer('ogc-layer');
+        map.removeSource('ogc-source');
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if(!data.features) { alert("Respon API bukan GeoJSON valid!"); return; }
+            map.addSource('ogc-source', { type: 'geojson', data: data });
+            map.addLayer({
+                'id': 'ogc-layer',
+                'type': 'circle',
+                'source': 'ogc-source',
+                'paint': { 'circle-radius': 6, 'circle-color': '#27ae60', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
+            });
+            map.fitBounds(turf.bbox(data), { padding: 50 });
+            alert(`Berhasil memuat ${data.features.length} fitur dari OGC API!`);
+        })
+        .catch(e => alert("Gagal mengambil data dari URL API: " + e));
+}
+
+function loadUserOGC() {
+    const url = document.getElementById('ogcUrl').value.trim();
+    if(!url) return alert("Masukkan URL dulu!");
+    loadOGCLayer(url);
+}
+
+function loadDemoOGC() {
+    const demoUrl = "https://demo.ldproxy.net/daraa/collections/TransportationGroundCrv/items?f=json&limit=50";
+    loadOGCLayer(demoUrl);
+}
+</script>
+</body>
+</html>
