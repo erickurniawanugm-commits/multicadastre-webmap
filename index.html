@@ -185,19 +185,17 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
 // 2. LAYER REGISTRATION FOR DYNAMIC REORDERING & OPACITY
-// Bottom-to-Top initial stack order
 let layerStack = [
-    { id: 'znt', name: '🟠 Zona Nilai Tanah', fillId: 'znt-fill', outlineId: 'znt-outline', highlightId: 'znt-highlight', opacity: 0.25, type: 'fill' },
-    { id: 'pajak', name: '🟣 Objek Pajak', fillId: 'pajak-fill', outlineId: 'pajak-outline', highlightId: 'pajak-highlight', opacity: 0.3, type: 'fill' },
-    { id: 'bidang', name: '🔴 Bidang Tanah', fillId: 'bidang-fill', outlineId: 'bidang-outline', highlightId: 'bidang-highlight', opacity: 0.25, type: 'fill' },
-    { id: 'bangunan', name: '🏢 Bangunan 3D', fillId: 'bangunan-3d', opacity: 0.85, type: 'fill-extrusion' }
+    { id: 'znt', name: '🟠 Zona Nilai Tanah', fillId: 'znt-fill', outlineId: 'znt-outline', highlightId: 'znt-highlight', opacity: 0.25, visible: true, type: 'fill' },
+    { id: 'pajak', name: '🟣 Objek Pajak', fillId: 'pajak-fill', outlineId: 'pajak-outline', highlightId: 'pajak-highlight', opacity: 0.3, visible: true, type: 'fill' },
+    { id: 'bidang', name: '🔴 Bidang Tanah', fillId: 'bidang-fill', outlineId: 'bidang-outline', highlightId: 'bidang-highlight', opacity: 0.25, visible: true, type: 'fill' },
+    { id: 'bangunan', name: '🏢 Bangunan 3D', fillId: 'bangunan-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
 ];
 
 function renderLayerControlUI() {
     const container = document.getElementById('layer-list');
     container.innerHTML = '';
 
-    // Render top layer first in the UI list
     [...layerStack].reverse().forEach((item, index) => {
         const actualIndex = layerStack.length - 1 - index;
         const card = document.createElement('div');
@@ -205,7 +203,7 @@ function renderLayerControlUI() {
         card.innerHTML = `
             <div class="layer-header">
                 <label style="cursor:pointer;">
-                    <input type="checkbox" id="chk-${item.id}" checked onchange="toggleLayerGroup('${item.id}', this.checked)">
+                    <input type="checkbox" id="chk-${item.id}" ${item.visible ? 'checked' : ''} onchange="toggleLayerGroup('${item.id}', this.checked)">
                     ${item.name}
                 </label>
                 <div class="layer-controls">
@@ -227,12 +225,10 @@ function moveLayerStack(index, direction) {
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= layerStack.length) return;
 
-    // Swap elements in array
     const temp = layerStack[index];
     layerStack[index] = layerStack[targetIndex];
     layerStack[targetIndex] = temp;
 
-    // Apply new z-index ordering in MapLibre map engine
     layerStack.forEach((layerItem) => {
         if (map.getLayer(layerItem.fillId)) map.moveLayer(layerItem.fillId);
         if (layerItem.outlineId && map.getLayer(layerItem.outlineId)) map.moveLayer(layerItem.outlineId);
@@ -252,13 +248,13 @@ function setLayerOpacity(layerId, opacityVal) {
     } else if (item.type === 'fill-extrusion' && map.getLayer(item.fillId)) {
         map.setPaintProperty(item.fillId, 'fill-extrusion-opacity', item.opacity);
     }
-    renderLayerControlUI();
 }
 
 function toggleLayerGroup(layerId, isVisible) {
     const item = layerStack.find(l => l.id === layerId);
     if (!item) return;
 
+    item.visible = isVisible;
     const visibility = isVisible ? 'visible' : 'none';
     [item.fillId, item.outlineId, item.highlightId].forEach(id => {
         if (id && map.getLayer(id)) {
@@ -290,10 +286,10 @@ map.on('mouseup', () => {
     if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab';
 });
 
-// 4. TABBED SIDEBAR SWITCHER
+// 4. TABBED SIDEBAR SWITCHER (FIXED JS SYNTAX)
 function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
     const activeBtn = document.getElementById(`tab-btn-${tabName}`);
     const activeContent = document.getElementById(`tab-content-${tabName}`);
@@ -434,24 +430,41 @@ map.on("load", () => {
     }).catch(e => console.log("kotabaru2.geojson missing"));
 });
 
-// 7. IDENTIFY LOGIC & TAB POPULATION
+// 7. CLEAR ALL HIGHLIGHTS & RESET SIDEBAR
 function clearAllHighlights() {
     if (clickedBidangId !== null) { map.setFeatureState({ source: "bidang", id: clickedBidangId }, { selected: false }); clickedBidangId = null; }
     if (clickedPajakId !== null) { map.setFeatureState({ source: "pajak", id: clickedPajakId }, { selected: false }); clickedPajakId = null; }
     if (clickedZNTId !== null) { map.setFeatureState({ source: "znt", id: clickedZNTId }, { selected: false }); clickedZNTId = null; }
     if (clickedBuildingId !== null) { map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: false }); clickedBuildingId = null; }
     if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+
+    document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik area peta.</div>';
+    document.getElementById('tab-content-pajak').innerHTML = '';
+    document.getElementById('tab-content-znt').innerHTML = '';
+
+    document.getElementById('tab-btn-bidang').disabled = true;
+    document.getElementById('tab-btn-pajak').disabled = true;
+    document.getElementById('tab-btn-znt').disabled = true;
+
+    switchTab('bidang');
 }
 
+// 8. IDENTIFY & DESELECT LOGIC
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
-
-    clearAllHighlights();
 
     const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['bangunan-3d'] });
     const featuresTanah = map.queryRenderedFeatures(e.point, { layers: ['bidang-fill'] });
     const featuresPajak = map.queryRenderedFeatures(e.point, { layers: ['pajak-fill'] });
     const featuresZNT = map.queryRenderedFeatures(e.point, { layers: ['znt-fill'] });
+
+    // Clicked empty space -> Deselect all
+    if (!featuresBangunan.length && !featuresTanah.length && !featuresPajak.length && !featuresZNT.length) {
+        clearAllHighlights();
+        return;
+    }
+
+    clearAllHighlights();
 
     // Handle 3D Building Flying Popup
     if (featuresBangunan.length > 0) {
@@ -467,7 +480,6 @@ map.on("click", (e) => {
         currentPopup = new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
     }
 
-    // Populate Tabbed Information Panel
     let firstAvailableTab = null;
 
     // A. Bidang Tanah Tab
@@ -527,13 +539,13 @@ map.on("click", (e) => {
         tabBtnZNT.disabled = true;
     }
 
-    // Auto-switch to the first tab that has data
+    // Switch to first tab with data
     if (firstAvailableTab) {
         switchTab(firstAvailableTab);
     }
 });
 
-// 8. SEARCH BY NIB
+// 9. SEARCH BY NIB
 function searchNIB() {
     const input = document.getElementById("searchBox").value.trim();
     if (!input || !bidangData) return;
