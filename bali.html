@@ -51,10 +51,13 @@
         .btn-mode { flex: 1; padding: 8px; font-size: 12px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
         .btn-mode.active { background: #002B49; color: #E5A823; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
 
-        /* LAYER MANAGEMENT */
+        /* LAYER MANAGEMENT & REORDERING */
         .layer-list { display: flex; flex-direction: column; gap: 8px; }
         .layer-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
         .layer-header { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: #334155; }
+        .layer-controls { display: flex; align-items: center; gap: 4px; }
+        .btn-order { background: white; border: 1px solid #cbd5e1; border-radius: 3px; cursor: pointer; font-size: 10px; padding: 2px 5px; }
+        .btn-order:hover { background: #e2e8f0; }
         .opacity-control { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #64748b; }
         .opacity-control input[type="range"] { flex: 1; accent-color: #002B49; cursor: pointer; height: 4px; }
 
@@ -119,9 +122,9 @@
         </div>
     </div>
 
-    <!-- LAYER MANAGEMENT -->
+    <!-- LAYER MANAGEMENT & REORDERING -->
     <div>
-        <h3>Manajemen Layer</h3>
+        <h3>Manajemen Layer & Urutan</h3>
         <div id="layer-list" class="layer-list"></div>
     </div>
 
@@ -184,7 +187,7 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-// 2. LAYER REGISTRATION FOR SANUR
+// 2. LAYER REGISTRATION FOR DYNAMIC REORDERING & HIDING
 let layerStack = [
     { id: 'bidang_sanur', name: '🔴 Bidang Tanah Sanur', fillId: 'sanur-parcel-fill', outlineId: 'sanur-parcel-outline', highlightId: 'sanur-parcel-highlight', opacity: 0.3, visible: true, type: 'fill' },
     { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
@@ -193,7 +196,9 @@ let layerStack = [
 function renderLayerControlUI() {
     const container = document.getElementById('layer-list');
     container.innerHTML = '';
-    layerStack.forEach(item => {
+
+    [...layerStack].reverse().forEach((item, index) => {
+        const actualIndex = layerStack.length - 1 - index;
         const card = document.createElement('div');
         card.className = 'layer-card';
         card.innerHTML = `
@@ -202,6 +207,10 @@ function renderLayerControlUI() {
                     <input type="checkbox" id="chk-${item.id}" ${item.visible ? 'checked' : ''} onchange="toggleLayerGroup('${item.id}', this.checked)">
                     ${item.name}
                 </label>
+                <div class="layer-controls">
+                    <button class="btn-order" onclick="moveLayerStack(${actualIndex}, 1)" ${actualIndex === layerStack.length - 1 ? 'disabled' : ''}>⬆️</button>
+                    <button class="btn-order" onclick="moveLayerStack(${actualIndex}, -1)" ${actualIndex === 0 ? 'disabled' : ''}>⬇️</button>
+                </div>
             </div>
             <div class="opacity-control">
                 <span>Transparansi:</span>
@@ -213,10 +222,28 @@ function renderLayerControlUI() {
     });
 }
 
+function moveLayerStack(index, direction) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= layerStack.length) return;
+
+    const temp = layerStack[index];
+    layerStack[index] = layerStack[targetIndex];
+    layerStack[targetIndex] = temp;
+
+    layerStack.forEach((layerItem) => {
+        if (map.getLayer(layerItem.fillId)) map.moveLayer(layerItem.fillId);
+        if (layerItem.outlineId && map.getLayer(layerItem.outlineId)) map.moveLayer(layerItem.outlineId);
+        if (layerItem.highlightId && map.getLayer(layerItem.highlightId)) map.moveLayer(layerItem.highlightId);
+    });
+
+    renderLayerControlUI();
+}
+
 function setLayerOpacity(layerId, opacityVal) {
     const item = layerStack.find(l => l.id === layerId);
     if (!item) return;
     item.opacity = parseFloat(opacityVal);
+
     if (item.type === 'fill' && map.getLayer(item.fillId)) {
         map.setPaintProperty(item.fillId, 'fill-opacity', item.opacity);
     } else if (item.type === 'fill-extrusion' && map.getLayer(item.fillId)) {
@@ -227,10 +254,13 @@ function setLayerOpacity(layerId, opacityVal) {
 function toggleLayerGroup(layerId, isVisible) {
     const item = layerStack.find(l => l.id === layerId);
     if (!item) return;
+
     item.visible = isVisible;
     const visibility = isVisible ? 'visible' : 'none';
     [item.fillId, item.outlineId, item.highlightId].forEach(id => {
-        if (id && map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+        if (id && map.getLayer(id)) {
+            map.setLayoutProperty(id, 'visibility', visibility);
+        }
     });
 }
 
