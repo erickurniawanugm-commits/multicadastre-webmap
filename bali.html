@@ -69,6 +69,11 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
+        /* SPATIAL QUERY SUMMARY BOX */
+        .building-summary-card { background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 8px; margin-top: 10px; font-size: 11px; }
+        .building-summary-title { font-weight: bold; color: #0369a1; margin-bottom: 4px; font-size: 12px; }
+        .building-item { background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px; margin-top: 4px; }
+
         /* BUTTONS & PANELS */
         .btn { padding: 6px 10px; background: white; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; color: #444; }
         .btn-primary { background: #002B49; color: white; border: none; }
@@ -119,6 +124,23 @@
         <div style="display:flex; gap:5px;">
             <input id="searchBoxSanur" type="text" placeholder="Contoh NIB: 04070" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px;">
             <button class="btn btn-primary" onclick="searchNIBPanur()">Cari</button>
+        </div>
+    </div>
+
+    <!-- FILTER TINGGI BANGUNAN -->
+    <div>
+        <h3>Filter Tinggi Bangunan</h3>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
+                <span>Minimal Tinggi:</span>
+                <span id="height-val" style="color:#002B49; font-size:12px; font-weight:bold;">0 m</span>
+            </div>
+            <input type="range" id="heightSlider" min="0" max="50" step="1" value="0" style="width:100%; accent-color:#002B49; cursor:pointer;" oninput="filterBuildingHeight(this.value)">
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; margin-top:2px;">
+                <span>0m</span>
+                <span>25m</span>
+                <span>50m+</span>
+            </div>
         </div>
     </div>
 
@@ -264,7 +286,21 @@ function toggleLayerGroup(layerId, isVisible) {
     });
 }
 
-// 3. CURSOR MODE SWITCHER
+// 3. BUILDING HEIGHT FILTER
+function filterBuildingHeight(minHeight) {
+    const heightNum = parseFloat(minHeight);
+    document.getElementById('height-val').innerText = `${heightNum} m`;
+
+    if (!map.getLayer('sanur-buildings-3d')) return;
+
+    map.setFilter('sanur-buildings-3d', [
+        '>=', 
+        ['coalesce', ['get', 'tinggi_z'], ['get', 'height'], 0], 
+        heightNum
+    ]);
+}
+
+// 4. CURSOR MODE SWITCHER
 let currentMode = 'pan'; 
 function setPointerMode(mode) {
     currentMode = mode;
@@ -280,7 +316,7 @@ function setPointerMode(mode) {
 map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
 map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
 
-// 4. TAB SWITCHER
+// 5. TAB SWITCHER
 function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -293,7 +329,7 @@ function switchTab(tabName) {
     }
 }
 
-// 5. DRAWING TOOLS
+// 6. DRAWING TOOLS
 const draw = new MapboxDraw({
     displayControlsDefault: false,
     controls: { point: false, line_string: false, polygon: false, trash: false },
@@ -348,8 +384,9 @@ function setBasemap(type, btnElement) {
     if(btnElement) btnElement.classList.add('active');
 }
 
-// 6. SPATIAL DATA LOADING
+// 7. SPATIAL DATA LOADING & ANALYSIS STORAGE
 let sanurParcelData = null;
+let sanurBuildingData = null;
 let clickedParcelId = null;
 let clickedBuildingId = null; 
 let currentPopup = null; 
@@ -376,6 +413,7 @@ map.on("load", () => {
 
     // B. LOAD SANUR 3D BUILDINGS DATA
     fetch("Sanur.geojson").then(r => r.json()).then(dataSanur => {
+        sanurBuildingData = dataSanur;
         dataSanur.features.forEach((feature, index) => { feature.id = index; }); 
         map.addSource("sanur-buildings-source", { type: "geojson", data: dataSanur });
         map.addLayer({
@@ -391,7 +429,56 @@ map.on("load", () => {
     }).catch(e => console.log("Sanur.geojson missing"));
 });
 
-// 7. CLEAR HIGHLIGHTS
+// 8. SPATIAL INTERSECTION QUERY (BUILDINGS INSIDE PARCEL)
+function analyzeBuildingsInParcel(parcelFeature) {
+    if (!sanurBuildingData || !sanurBuildingData.features) return '';
+
+    let insideBuildings = [];
+
+    sanurBuildingData.features.forEach((b) => {
+        try {
+            // Find centroid point of the 3D building polygon
+            const center = turf.centroid(b);
+            // Check if building center sits inside the 2D parcel polygon
+            if (turf.booleanPointInPolygon(center, parcelFeature)) {
+                insideBuildings.push(b);
+            }
+        } catch (err) {
+            // Polygon geometry fallback
+            try {
+                if (turf.intersect(parcelFeature, b)) {
+                    insideBuildings.push(b);
+                }
+            } catch (e) {}
+        }
+    });
+
+    let summaryHtml = `
+        <div class="building-summary-card">
+            <div class="building-summary-title">🏢 Analisis Bangunan 3D (${insideBuildings.length} Unit)</div>
+    `;
+
+    if (insideBuildings.length === 0) {
+        summaryHtml += `<div style="color:#64748b; font-style:italic;">Tidak ada bangunan 3D tercatat di atas bidang tanah ini.</div>`;
+    } else {
+        insideBuildings.forEach((b, idx) => {
+            const props = b.properties || {};
+            const height = props.tinggi_z || props.height || '-';
+            const bId = props.id || props.gmlid || `#${idx + 1}`;
+            summaryHtml += `
+                <div class="building-item">
+                    <b>Bangunan ${idx + 1}:</b> ${bId}<br>
+                    <span style="color:#002B49;">Tinggi: <b>${height} m</b></span>
+                </div>
+            `;
+        });
+    }
+
+    summaryHtml += `</div>`;
+    return summaryHtml;
+}
+
+// 9. CLEAR HIGHLIGHTS
 function clearAllHighlights() {
     if (clickedParcelId !== null) {
         map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: false });
@@ -413,7 +500,7 @@ function clearAllHighlights() {
     switchTab('bidang');
 }
 
-// 8. IDENTIFY & TOGGLE DESELECT LOGIC
+// 10. IDENTIFY & TOGGLE DESELECT LOGIC
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
@@ -432,13 +519,12 @@ map.on("click", (e) => {
         const parcelId = feature.properties.NIB || feature.id;
         const currentState = map.getFeatureState({ source: "sanur-parcel-source", id: parcelId });
 
-        // Easy Toggle: If already selected -> DESELECT IT
+        // Toggle: If already selected -> DESELECT IT
         if (currentState && currentState.selected) {
             clearAllHighlights();
             return;
         }
 
-        // Otherwise -> SELECT IT
         clearAllHighlights();
         clickedParcelId = parcelId;
         map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
@@ -446,6 +532,9 @@ map.on("click", (e) => {
         let rows = `<table class="info-table">`;
         for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
         rows += `</table>`;
+
+        // Compute 3D building overlap for this parcel
+        rows += analyzeBuildingsInParcel(feature);
 
         const tabBtnBidang = document.getElementById('tab-btn-bidang');
         document.getElementById('tab-content-bidang').innerHTML = rows;
@@ -460,13 +549,12 @@ map.on("click", (e) => {
         const buildingId = feature.id;
         const currentState = map.getFeatureState({ source: "sanur-buildings-source", id: buildingId });
 
-        // Easy Toggle: If already selected -> DESELECT IT
+        // Toggle: If already selected -> DESELECT IT
         if (currentState && currentState.selected) {
             clearAllHighlights();
             return;
         }
 
-        // Otherwise -> SELECT IT
         clearAllHighlights();
         clickedBuildingId = buildingId;
         map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: true });
@@ -494,7 +582,7 @@ map.on("click", (e) => {
     }
 });
 
-// 9. SEARCH BY SANUR NIB
+// 11. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
 function searchNIBPanur() {
     const input = document.getElementById("searchBoxSanur").value.trim();
     if (!input || !sanurParcelData) return;
@@ -513,6 +601,9 @@ function searchNIBPanur() {
     let rows = `<table class="info-table">`;
     for (const k in found.properties) { rows += `<tr><td>${k}</td><td>${found.properties[k]}</td></tr>`; }
     rows += `</table>`;
+
+    // Compute 3D building overlap for searched parcel
+    rows += analyzeBuildingsInParcel(found);
 
     document.getElementById('tab-content-bidang').innerHTML = rows;
     document.getElementById('tab-btn-bidang').disabled = false;
