@@ -33,6 +33,8 @@
         }
         #header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.8px; color: #ffffff; }
         #header span { font-size: 13px; color: #E5A823; margin-left: 12px; font-weight: 400; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px; }
+        .nav-link { margin-left: auto; color: #E5A823; text-decoration: none; font-weight: 600; font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 4px; border: 1px solid #E5A823; transition: 0.2s; }
+        .nav-link:hover { background: #E5A823; color: #002B49; }
 
         /* LAYOUT */
         #map { width: 100vw; height: calc(100vh - 60px); position: relative; }
@@ -44,12 +46,12 @@
         }
         #sidebar h3 { margin: 0 0 6px 0; color: #002B49; border-bottom: 2px solid #E5A823; padding-bottom: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
 
-        /* CURSOR MODES (PAN VS IDENTIFY) */
+        /* CURSOR MODES */
         .mode-toolbar { display: flex; gap: 6px; background: #edf2f7; padding: 4px; border-radius: 6px; border: 1px solid #cbd5e1; }
         .btn-mode { flex: 1; padding: 8px; font-size: 12px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
         .btn-mode.active { background: #002B49; color: #E5A823; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
 
-        /* LAYER MANAGEMENT & REORDERING */
+        /* LAYER MANAGEMENT */
         .layer-list { display: flex; flex-direction: column; gap: 8px; }
         .layer-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
         .layer-header { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: #334155; }
@@ -97,7 +99,8 @@
 
 <div id="header">
     <h1>SIPN</h1>
-    <span>Sistem Informasi Pertanahan Nasional (ATR/BPN)</span>
+    <span>Sistem Informasi Pertanahan Nasional (ATR/BPN) — Kotabaru</span>
+    <a href="bali.html" class="nav-link">🏝️ Ke Peta Bali (Sanur)</a>
 </div>
 
 <div id="sidebar">
@@ -119,12 +122,10 @@
         </div>
     </div>
 
-    <!-- LAYER MANAGEMENT, STACKING ORDER & OPACITY -->
+    <!-- LAYER MANAGEMENT -->
     <div>
         <h3>Manajemen Layer & Urutan</h3>
-        <div id="layer-list" class="layer-list">
-            <!-- Layers render dynamically -->
-        </div>
+        <div id="layer-list" class="layer-list"></div>
     </div>
 
     <!-- TABBED INFO PANEL -->
@@ -169,13 +170,13 @@
 <div id="map"></div>
 
 <script>
-// 1. INITIALIZE MAP (Default Center: Sanur, Denpasar, Bali)
+// 1. INITIALIZE MAP (Center: Kotabaru, Yogyakarta)
 const map = new maplibregl.Map({
     container: "map",
-    center: [115.2625, -8.6881],
+    center: [110.367, -7.795],
     zoom: 16,
-    pitch: 50,
-    bearing: -15,
+    pitch: 45,
+    bearing: -10,
     style: {
         version: 8,
         sources: { basemap: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256 } },
@@ -189,8 +190,7 @@ let layerStack = [
     { id: 'znt', name: '🟠 Zona Nilai Tanah', fillId: 'znt-fill', outlineId: 'znt-outline', highlightId: 'znt-highlight', opacity: 0.25, visible: true, type: 'fill' },
     { id: 'pajak', name: '🟣 Objek Pajak', fillId: 'pajak-fill', outlineId: 'pajak-outline', highlightId: 'pajak-highlight', opacity: 0.3, visible: true, type: 'fill' },
     { id: 'bidang', name: '🔴 Bidang Tanah', fillId: 'bidang-fill', outlineId: 'bidang-outline', highlightId: 'bidang-highlight', opacity: 0.25, visible: true, type: 'fill' },
-    { id: 'bangunan_kotabaru', name: '🏢 Bangunan 3D Kotabaru', fillId: 'bangunan-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' },
-    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
+    { id: 'bangunan', name: '🏢 Bangunan 3D Kotabaru', fillId: 'bangunan-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
 ];
 
 function renderLayerControlUI() {
@@ -264,7 +264,7 @@ function toggleLayerGroup(layerId, isVisible) {
     });
 }
 
-// 3. CURSOR MODE SWITCHER (PAN VS IDENTIFY)
+// 3. CURSOR MODE SWITCHER
 let currentMode = 'pan'; 
 
 function setPointerMode(mode) {
@@ -280,14 +280,10 @@ function setPointerMode(mode) {
     }
 }
 
-map.on('mousedown', () => {
-    if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing';
-});
-map.on('mouseup', () => {
-    if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab';
-});
+map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
+map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
 
-// 4. TABBED SIDEBAR SWITCHER
+// 4. TAB SWITCHER
 function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -356,7 +352,7 @@ function setBasemap(type, btnElement) {
     if(btnElement) btnElement.classList.add('active');
 }
 
-// 6. SPATIAL DATA LOADING
+// 6. SPATIAL DATA LOADING (Kotabaru Layers Only)
 let bidangData = null;
 let clickedBidangId = null; 
 let clickedPajakId = null;
@@ -409,6 +405,10 @@ map.on("load", () => {
             id: "bidang-highlight", type: "line", source: "bidang",
             paint: { "line-color": ["case", ["boolean", ["feature-state", "selected"], false], "#00FFFF", "transparent"], "line-width": 4 }
         });
+
+        if (data.features && data.features.length > 0) {
+            map.fitBounds(turf.bbox(data), { padding: 50 });
+        }
     }).catch(e => console.log("BidangTanah.geojson missing"));
 
     // E. BANGUNAN 3D KOTABARU LAYER
@@ -425,21 +425,6 @@ map.on("load", () => {
             }
         });
     }).catch(e => console.log("kotabaru2.geojson missing"));
-
-    // F. BANGUNAN 3D SANUR LAYER
-    fetch("Sanur.geojson").then(r => r.json()).then(dataSanur => {
-        dataSanur.features.forEach((feature, index) => { feature.id = index; }); 
-        map.addSource("sanur-buildings-source", { type: "geojson", data: dataSanur });
-        map.addLayer({
-            id: "sanur-buildings-3d", type: "fill-extrusion", source: "sanur-buildings-source",
-            paint: {
-                "fill-extrusion-color": ["case", ["boolean", ["feature-state", "selected"], false], "#e74c3c", "#4a90e2"],
-                "fill-extrusion-height": ["coalesce", ["get", "tinggi_z"], ["get", "height"], 5],
-                "fill-extrusion-base": 0,
-                "fill-extrusion-opacity": 0.85
-            }
-        });
-    }).catch(e => console.log("Sanur.geojson missing"));
 });
 
 // 7. CLEAR ALL HIGHLIGHTS & RESET SIDEBAR
@@ -447,11 +432,7 @@ function clearAllHighlights() {
     if (clickedBidangId !== null) { map.setFeatureState({ source: "bidang", id: clickedBidangId }, { selected: false }); clickedBidangId = null; }
     if (clickedPajakId !== null) { map.setFeatureState({ source: "pajak", id: clickedPajakId }, { selected: false }); clickedPajakId = null; }
     if (clickedZNTId !== null) { map.setFeatureState({ source: "znt", id: clickedZNTId }, { selected: false }); clickedZNTId = null; }
-    if (clickedBuildingId !== null) { 
-        if (map.getSource("bangunan")) map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: false }); 
-        if (map.getSource("sanur-buildings-source")) map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: false }); 
-        clickedBuildingId = null; 
-    }
+    if (clickedBuildingId !== null) { map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: false }); clickedBuildingId = null; }
     if (currentPopup) { currentPopup.remove(); currentPopup = null; }
 
     document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik area peta.</div>';
@@ -469,12 +450,11 @@ function clearAllHighlights() {
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
-    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['bangunan-3d', 'sanur-buildings-3d'] });
+    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['bangunan-3d'] });
     const featuresTanah = map.queryRenderedFeatures(e.point, { layers: ['bidang-fill'] });
     const featuresPajak = map.queryRenderedFeatures(e.point, { layers: ['pajak-fill'] });
     const featuresZNT = map.queryRenderedFeatures(e.point, { layers: ['znt-fill'] });
 
-    // Clicked empty space -> Deselect all
     if (!featuresBangunan.length && !featuresTanah.length && !featuresPajak.length && !featuresZNT.length) {
         clearAllHighlights();
         return;
@@ -482,24 +462,21 @@ map.on("click", (e) => {
 
     clearAllHighlights();
 
-    // Handle 3D Building Flying Popup
     if (featuresBangunan.length > 0) {
         const feature = featuresBangunan[0];
         clickedBuildingId = feature.id;
-        const sourceName = feature.layer.id === 'sanur-buildings-3d' ? "sanur-buildings-source" : "bangunan";
-        map.setFeatureState({ source: sourceName, id: clickedBuildingId }, { selected: true });
+        map.setFeatureState({ source: "bangunan", id: clickedBuildingId }, { selected: true });
 
         const props = feature.properties;
         let linkId = String(props.id_cityobject || props.cityobject_id); 
-        let nama = (linkId && KamusGedung[linkId]) ? KamusGedung[linkId] : (props.gmlid || props.id || "Bangunan 3D");
+        let nama = (linkId && KamusGedung[linkId]) ? KamusGedung[linkId] : (props.gmlid || "Bangunan 3D");
 
-        const html = `<div class="popup-header">🏢 ${nama}</div><div class="popup-body"><div class="popup-row"><b>Tinggi:</b><span>${props.tinggi_z || props.height || '-'} m</span></div><div class="popup-row"><b>ID:</b><span>${props.id || props.gmlid || '-'}</span></div></div>`;
+        const html = `<div class="popup-header">🏢 ${nama}</div><div class="popup-body"><div class="popup-row"><b>Tinggi:</b><span>${props.tinggi_z || props.height || '-'} m</span></div><div class="popup-row"><b>GML ID:</b><span>${props.gmlid || '-'}</span></div></div>`;
         currentPopup = new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
     }
 
     let firstAvailableTab = null;
 
-    // A. Bidang Tanah Tab
     const tabBtnBidang = document.getElementById('tab-btn-bidang');
     const tabContentBidang = document.getElementById('tab-content-bidang');
     if (featuresTanah.length > 0) {
@@ -518,7 +495,6 @@ map.on("click", (e) => {
         tabBtnBidang.disabled = true;
     }
 
-    // B. Objek Pajak Tab
     const tabBtnPajak = document.getElementById('tab-btn-pajak');
     const tabContentPajak = document.getElementById('tab-content-pajak');
     if (featuresPajak.length > 0) {
@@ -537,7 +513,6 @@ map.on("click", (e) => {
         tabBtnPajak.disabled = true;
     }
 
-    // C. ZNT Tab
     const tabBtnZNT = document.getElementById('tab-btn-znt');
     const tabContentZNT = document.getElementById('tab-content-znt');
     if (featuresZNT.length > 0) {
@@ -556,7 +531,6 @@ map.on("click", (e) => {
         tabBtnZNT.disabled = true;
     }
 
-    // Switch to first tab with data
     if (firstAvailableTab) {
         switchTab(firstAvailableTab);
     }
