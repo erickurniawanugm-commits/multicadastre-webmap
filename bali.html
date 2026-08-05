@@ -46,6 +46,34 @@
         }
         #sidebar h3 { margin: 0 0 6px 0; color: #002B49; border-bottom: 2px solid #E5A823; padding-bottom: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
 
+        /* FLOATING RIGHT BUILDING PANEL */
+        #right-building-panel {
+            position: absolute;
+            top: 75px;
+            right: 20px;
+            width: 310px;
+            max-height: calc(100vh - 160px);
+            background: rgba(255, 255, 255, 0.96);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            z-index: 45;
+            padding: 12px;
+            display: none;
+            backdrop-filter: blur(4px);
+            border: 1px solid #cbd5e1;
+        }
+        .right-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 13px;
+            color: #002B49;
+            border-bottom: 2px solid #E5A823;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+        }
+
         /* CURSOR MODES */
         .mode-toolbar { display: flex; gap: 6px; background: #edf2f7; padding: 4px; border-radius: 6px; border: 1px solid #cbd5e1; }
         .btn-mode { flex: 1; padding: 8px; font-size: 11px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
@@ -69,9 +97,25 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* SCROLLABLE MULTI-BUILDING PANEL */
-        .building-scroll-container { max-height: 260px; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px; }
-        .building-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-size: 11px; position: relative; }
+        /* SCROLLABLE MULTI-BUILDING PANEL & HIGHLIGHT CARD */
+        .building-scroll-container { max-height: 380px; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px; }
+        .building-card { 
+            background: #ffffff; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 6px; 
+            padding: 8px; 
+            font-size: 11px; 
+            position: relative; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .building-card:hover { border-color: #002B49; background: #f0fdf4; }
+        .building-card.active-building { 
+            border: 2px solid #E5A823; 
+            background: #fffbeb; 
+            box-shadow: 0 0 8px rgba(229, 168, 35, 0.4); 
+        }
         .building-card-header { font-weight: bold; color: #002B49; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
         .btn-remove-building { background: transparent; border: none; color: #e74c3c; cursor: pointer; font-weight: bold; font-size: 12px; }
 
@@ -153,14 +197,10 @@
         <h3>Informasi Objek Terpilih</h3>
         <div class="tab-header">
             <button id="tab-btn-bidang" class="tab-btn active" onclick="switchTab('bidang')" disabled>Bidang Tanah</button>
-            <button id="tab-btn-bangunan" class="tab-btn" onclick="switchTab('bangunan')" disabled>Bangunan 3D</button>
         </div>
         <div id="info-panel">
             <div id="tab-content-bidang" class="tab-content active">
                 <div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>
-            </div>
-            <div id="tab-content-bangunan" class="tab-content">
-                <div class="info-placeholder">Klik bangunan 3D di peta.</div>
             </div>
         </div>
     </div>
@@ -181,6 +221,15 @@
             <button class="btn btn-danger" onclick="downloadDrawings()">💾 Simpan GeoJSON</button>
         </div>
     </div>
+</div>
+
+<!-- FLOATING RIGHT BUILDING INFORMATION PANEL -->
+<div id="right-building-panel">
+    <div class="right-panel-header">
+        <span>🏢 Informasi Bangunan 3D</span>
+        <button class="btn-remove-building" onclick="clearAllHighlights(true)">✖ Close</button>
+    </div>
+    <div id="right-building-content"></div>
 </div>
 
 <!-- BASEMAP SWITCHER -->
@@ -472,20 +521,39 @@ function analyzeBuildingsInParcel(parcelFeature) {
     return summaryHtml;
 }
 
-// 9. RENDER SCROLLABLE BUILDING SIDEBAR PANEL
-function updateBuildingSidebarPanel() {
-    const tabBtnBangunan = document.getElementById('tab-btn-bangunan');
-    const container = document.getElementById('tab-content-bangunan');
+// 9. FLY TO BUILDING & HIGHLIGHT CARD ON CLICK
+function focusBuildingOnMap(bId) {
+    const feature = selectedBuildingFeatures.get(bId);
+    if (!feature) return;
+
+    // Highlight active card UI
+    document.querySelectorAll('.building-card').forEach(card => card.classList.remove('active-building'));
+    const activeCard = document.getElementById(`bcard-${bId}`);
+    if (activeCard) activeCard.classList.add('active-building');
+
+    // Fly camera smoothly to building centroid
+    const center = turf.centroid(feature).geometry.coordinates;
+    map.flyTo({
+        center: center,
+        zoom: 18,
+        pitch: 60,
+        bearing: -20,
+        essential: true
+    });
+}
+
+// 10. RENDER RIGHT FLOATING BUILDING PANEL
+function updateBuildingRightPanel() {
+    const rightPanel = document.getElementById('right-building-panel');
+    const container = document.getElementById('right-building-content');
 
     if (selectedBuildingFeatures.size === 0) {
-        container.innerHTML = '<div class="info-placeholder">Klik bangunan 3D di peta.</div>';
-        tabBtnBangunan.disabled = true;
-        switchTab('bidang');
+        rightPanel.style.display = 'none';
         return;
     }
 
-    tabBtnBangunan.disabled = false;
-    let html = `<div style="font-weight:600; font-size:11px; color:#002B49; margin-bottom:6px;">Terpilih ${selectedBuildingFeatures.size} Bangunan:</div>`;
+    rightPanel.style.display = 'block';
+    let html = `<div style="font-weight:600; font-size:11px; color:#002B49; margin-bottom:6px;">Terpilih <b>${selectedBuildingFeatures.size}</b> Bangunan:</div>`;
     html += `<div class="building-scroll-container">`;
 
     let count = 1;
@@ -493,10 +561,10 @@ function updateBuildingSidebarPanel() {
         const props = feature.properties || {};
         const nama = props.id || props.gmlid || `Bangunan #${count}`;
         html += `
-            <div class="building-card">
+            <div id="bcard-${bId}" class="building-card" onclick="focusBuildingOnMap(${bId})">
                 <div class="building-card-header">
                     <span>🏢 #${count} - ${nama}</span>
-                    <button class="btn-remove-building" onclick="removeSelectedBuilding(${bId})">✖</button>
+                    <button class="btn-remove-building" onclick="event.stopPropagation(); removeSelectedBuilding(${bId});">✖</button>
                 </div>
                 <table class="info-table">
         `;
@@ -509,7 +577,6 @@ function updateBuildingSidebarPanel() {
 
     html += `</div>`;
     container.innerHTML = html;
-    switchTab('bangunan');
 }
 
 function removeSelectedBuilding(bId) {
@@ -517,12 +584,12 @@ function removeSelectedBuilding(bId) {
         map.setFeatureState({ source: "sanur-buildings-source", id: bId }, { selected: false });
     }
     selectedBuildingFeatures.delete(bId);
-    updateBuildingSidebarPanel();
+    updateBuildingRightPanel();
 }
 
-// 10. CLEAR HIGHLIGHTS
-function clearAllHighlights(keepParcel = false) {
-    if (!keepParcel && clickedParcelId !== null) {
+// 11. CLEAR HIGHLIGHTS
+function clearAllHighlights(buildingsOnly = false) {
+    if (!buildingsOnly && clickedParcelId !== null) {
         map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: false });
         clickedParcelId = null;
         document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>';
@@ -536,13 +603,10 @@ function clearAllHighlights(keepParcel = false) {
     });
     selectedBuildingFeatures.clear();
 
-    document.getElementById('tab-content-bangunan').innerHTML = '<div class="info-placeholder">Klik bangunan 3D di peta.</div>';
-    document.getElementById('tab-btn-bangunan').disabled = true;
-
-    if (!keepParcel) switchTab('bidang');
+    updateBuildingRightPanel();
 }
 
-// 11. IDENTIFY LOGIC WITH SCROLLABLE RIGHT PANEL & CTRL SUPPORT
+// 12. IDENTIFY LOGIC WITH FLOATING RIGHT PANEL & CTRL SUPPORT
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
@@ -570,7 +634,8 @@ map.on("click", (e) => {
             selectedBuildingFeatures.set(buildingId, feature);
         }
 
-        updateBuildingSidebarPanel();
+        updateBuildingRightPanel();
+        focusBuildingOnMap(buildingId);
         return;
     }
 
@@ -606,7 +671,7 @@ map.on("click", (e) => {
     clearAllHighlights(false);
 });
 
-// 12. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
+// 13. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
 function searchNIBPanur() {
     const input = document.getElementById("searchBoxSanur").value.trim();
     if (!input || !sanurParcelData) return;
