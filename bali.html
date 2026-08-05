@@ -156,7 +156,7 @@
             <button id="btn-mode-point" class="btn-mode" onclick="setPointerMode('point')">🎯 Point / Identify</button>
         </div>
         <div style="font-size:10px; color:#64748b; margin-top:4px;">
-            💡 <i>Tips: Tahan tombol <b>CTRL</b> saat klik bangunan untuk memilih beberapa bangunan sekaligus.</i>
+            💡 <i>Tips: Gunakan <b>WASD / Panah</b> untuk geser peta, <b>Q/E</b> rotasi, <b>R/F</b> tilt 3D, dan <b>CTRL+Klik</b> pilih multi bangunan.</i>
         </div>
     </div>
 
@@ -256,7 +256,47 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-// 2. LAYER REGISTRATION & DYNAMIC UI
+// 2. KEYBOARD NAVIGATION (WASD + ARROW KEYS + Q/E + R/F)
+window.addEventListener('keydown', (e) => {
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+    const panStep = 80;
+    const rotateStep = 10;
+    const pitchStep = 5;
+
+    switch (e.key.toLowerCase()) {
+        case 'w':
+        case 'arrowup':
+            map.panBy([0, -panStep], { duration: 100 });
+            break;
+        case 's':
+        case 'arrowdown':
+            map.panBy([0, panStep], { duration: 100 });
+            break;
+        case 'a':
+        case 'arrowleft':
+            map.panBy([-panStep, 0], { duration: 100 });
+            break;
+        case 'd':
+        case 'arrowright':
+            map.panBy([panStep, 0], { duration: 100 });
+            break;
+        case 'q':
+            map.easeTo({ bearing: map.getBearing() - rotateStep, duration: 100 });
+            break;
+        case 'e':
+            map.easeTo({ bearing: map.getBearing() + rotateStep, duration: 100 });
+            break;
+        case 'r':
+            map.easeTo({ pitch: Math.min(map.getPitch() + pitchStep, 85), duration: 100 });
+            break;
+        case 'f':
+            map.easeTo({ pitch: Math.max(map.getPitch() - pitchStep, 0), duration: 100 });
+            break;
+    }
+});
+
+// 3. LAYER REGISTRATION & DYNAMIC UI
 let layerStack = [
     { id: 'bidang_sanur', name: '🔴 Bidang Tanah Sanur', fillId: 'sanur-parcel-fill', outlineId: 'sanur-parcel-outline', highlightId: 'sanur-parcel-highlight', opacity: 0.3, visible: true, type: 'fill' },
     { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
@@ -333,7 +373,7 @@ function toggleLayerGroup(layerId, isVisible) {
     });
 }
 
-// 3. BUILDING HEIGHT FILTER
+// 4. BUILDING HEIGHT FILTER
 function filterBuildingHeight(minHeight) {
     const heightNum = parseFloat(minHeight);
     document.getElementById('height-val').innerText = `${heightNum} m`;
@@ -347,7 +387,7 @@ function filterBuildingHeight(minHeight) {
     ]);
 }
 
-// 4. CURSOR MODE SWITCHER
+// 5. CURSOR MODE SWITCHER
 let currentMode = 'pan'; 
 function setPointerMode(mode) {
     currentMode = mode;
@@ -363,7 +403,7 @@ function setPointerMode(mode) {
 map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
 map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
 
-// 5. TAB SWITCHER
+// 6. TAB SWITCHER
 function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -376,7 +416,7 @@ function switchTab(tabName) {
     }
 }
 
-// 6. DRAWING TOOLS
+// 7. DRAWING TOOLS
 const draw = new MapboxDraw({
     displayControlsDefault: false,
     controls: { point: false, line_string: false, polygon: false, trash: false },
@@ -431,7 +471,7 @@ function setBasemap(type, btnElement) {
     if(btnElement) btnElement.classList.add('active');
 }
 
-// 7. SPATIAL DATA LOADING & STORAGE
+// 8. SPATIAL DATA LOADING & STORAGE
 let sanurParcelData = null;
 let sanurBuildingData = null;
 let clickedParcelId = null;
@@ -475,7 +515,7 @@ map.on("load", () => {
     }).catch(e => console.log("Sanur.geojson missing"));
 });
 
-// 8. ROBUST SPATIAL OVERLAP QUERY (BUILDINGS OVER PARCEL)
+// 9. ROBUST SPATIAL OVERLAP QUERY (BUILDINGS OVER PARCEL)
 function analyzeBuildingsInParcel(parcelFeature) {
     if (!sanurBuildingData || !sanurBuildingData.features) return '';
 
@@ -521,17 +561,15 @@ function analyzeBuildingsInParcel(parcelFeature) {
     return summaryHtml;
 }
 
-// 9. FLY TO BUILDING & HIGHLIGHT CARD ON CLICK
+// 10. FLY TO BUILDING & HIGHLIGHT CARD ON CLICK
 function focusBuildingOnMap(bId) {
     const feature = selectedBuildingFeatures.get(bId);
     if (!feature) return;
 
-    // Highlight active card UI
     document.querySelectorAll('.building-card').forEach(card => card.classList.remove('active-building'));
     const activeCard = document.getElementById(`bcard-${bId}`);
     if (activeCard) activeCard.classList.add('active-building');
 
-    // Fly camera smoothly to building centroid
     const center = turf.centroid(feature).geometry.coordinates;
     map.flyTo({
         center: center,
@@ -542,7 +580,7 @@ function focusBuildingOnMap(bId) {
     });
 }
 
-// 10. RENDER RIGHT FLOATING BUILDING PANEL
+// 11. RENDER RIGHT FLOATING BUILDING PANEL
 function updateBuildingRightPanel() {
     const rightPanel = document.getElementById('right-building-panel');
     const container = document.getElementById('right-building-content');
@@ -587,7 +625,7 @@ function removeSelectedBuilding(bId) {
     updateBuildingRightPanel();
 }
 
-// 11. CLEAR HIGHLIGHTS
+// 12. CLEAR HIGHLIGHTS
 function clearAllHighlights(buildingsOnly = false) {
     if (!buildingsOnly && clickedParcelId !== null) {
         map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: false });
@@ -606,7 +644,7 @@ function clearAllHighlights(buildingsOnly = false) {
     updateBuildingRightPanel();
 }
 
-// 12. IDENTIFY LOGIC WITH FLOATING RIGHT PANEL & CTRL SUPPORT
+// 13. IDENTIFY LOGIC WITH FLOATING RIGHT PANEL & CTRL SUPPORT
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
@@ -671,7 +709,7 @@ map.on("click", (e) => {
     clearAllHighlights(false);
 });
 
-// 13. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
+// 14. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
 function searchNIBPanur() {
     const input = document.getElementById("searchBoxSanur").value.trim();
     if (!input || !sanurParcelData) return;
