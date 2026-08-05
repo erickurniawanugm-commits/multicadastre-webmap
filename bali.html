@@ -62,11 +62,13 @@
         .tab-header { display: flex; border-bottom: 2px solid #002B49; margin-bottom: 8px; background: #f1f5f9; border-radius: 4px 4px 0 0; }
         .tab-btn { flex: 1; padding: 8px 4px; font-size: 11px; font-weight: 600; border: none; background: transparent; cursor: pointer; color: #64748b; text-align: center; }
         .tab-btn.active { background: #002B49; color: #E5A823; }
+        .tab-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
         /* BUTTONS & PANELS */
         .btn { padding: 6px 10px; background: white; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; color: #444; }
+        .btn-primary { background: #002B49; color: white; border: none; }
         .btn-danger { background: #e74c3c; color: white; border: none; }
         .draw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
         .btn-tool { text-align: center; padding: 6px; border: 1px solid #002B49; color: #002B49; background: #f4f8fb; }
@@ -108,6 +110,15 @@
         </div>
     </div>
 
+    <!-- PENCARIAN NIB SANUR -->
+    <div>
+        <h3>Pencarian NIB Sanur</h3>
+        <div style="display:flex; gap:5px;">
+            <input id="searchBoxSanur" type="text" placeholder="Contoh NIB: 04070" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px;">
+            <button class="btn btn-primary" onclick="searchNIBPanur()">Cari</button>
+        </div>
+    </div>
+
     <!-- LAYER MANAGEMENT -->
     <div>
         <h3>Manajemen Layer</h3>
@@ -118,30 +129,19 @@
     <div>
         <h3>Informasi Objek Terpilih</h3>
         <div class="tab-header">
-            <button id="tab-btn-bangunan" class="tab-btn active">Bangunan 3D</button>
+            <button id="tab-btn-bidang" class="tab-btn active" onclick="switchTab('bidang')" disabled>Bidang Tanah</button>
+            <button id="tab-btn-bangunan" class="tab-btn" onclick="switchTab('bangunan')" disabled>Bangunan 3D</button>
         </div>
         <div id="info-panel">
-            <div id="tab-content-bangunan" class="tab-content active">
-                <div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bangunan 3D di peta.</div>
+            <div id="tab-content-bidang" class="tab-content active">
+                <div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>
+            </div>
+            <div id="tab-content-bangunan" class="tab-content">
+                <div class="info-placeholder">Klik bangunan 3D di peta.</div>
             </div>
         </div>
     </div>
-<!-- FILTER TINGGI BANGUNAN -->
-<div>
-    <h3>Filter Tinggi Bangunan</h3>
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
-            <span>Minimal Tinggi:</span>
-            <span id="height-val" style="color:#002B49; font-size:12px; font-weight:bold;">0 m</span>
-        </div>
-        <input type="range" id="heightSlider" min="0" max="50" step="1" value="0" style="width:100%; accent-color:#002B49; cursor:pointer;" oninput="filterBuildingHeight(this.value)">
-        <div style="display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; margin-top:2px;">
-            <span>0m</span>
-            <span>25m</span>
-            <span>50m+</span>
-        </div>
-    </div>
-</div>
+
     <!-- TOOLS DRAWING -->
     <div>
         <h3>Pengukuran & Penggambaran</h3>
@@ -184,9 +184,10 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-// 2. LAYER REGISTRATION (Exclusive to Sanur/Bali)
+// 2. LAYER REGISTRATION FOR SANUR
 let layerStack = [
-    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true }
+    { id: 'bidang_sanur', name: '🔴 Bidang Tanah Sanur', fillId: 'sanur-parcel-fill', outlineId: 'sanur-parcel-outline', highlightId: 'sanur-parcel-highlight', opacity: 0.3, visible: true, type: 'fill' },
+    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
 ];
 
 function renderLayerControlUI() {
@@ -216,7 +217,9 @@ function setLayerOpacity(layerId, opacityVal) {
     const item = layerStack.find(l => l.id === layerId);
     if (!item) return;
     item.opacity = parseFloat(opacityVal);
-    if (map.getLayer(item.fillId)) {
+    if (item.type === 'fill' && map.getLayer(item.fillId)) {
+        map.setPaintProperty(item.fillId, 'fill-opacity', item.opacity);
+    } else if (item.type === 'fill-extrusion' && map.getLayer(item.fillId)) {
         map.setPaintProperty(item.fillId, 'fill-extrusion-opacity', item.opacity);
     }
 }
@@ -226,9 +229,9 @@ function toggleLayerGroup(layerId, isVisible) {
     if (!item) return;
     item.visible = isVisible;
     const visibility = isVisible ? 'visible' : 'none';
-    if (map.getLayer(item.fillId)) {
-        map.setLayoutProperty(item.fillId, 'visibility', visibility);
-    }
+    [item.fillId, item.outlineId, item.highlightId].forEach(id => {
+        if (id && map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    });
 }
 
 // 3. CURSOR MODE SWITCHER
@@ -247,7 +250,20 @@ function setPointerMode(mode) {
 map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
 map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
 
-// 4. DRAWING TOOLS
+// 4. TAB SWITCHER
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+    const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+    const activeContent = document.getElementById(`tab-content-${tabName}`);
+    if (activeBtn && activeContent) {
+        activeBtn.classList.add('active');
+        activeContent.classList.add('active');
+    }
+}
+
+// 5. DRAWING TOOLS
 const draw = new MapboxDraw({
     displayControlsDefault: false,
     controls: { point: false, line_string: false, polygon: false, trash: false },
@@ -302,7 +318,9 @@ function setBasemap(type, btnElement) {
     if(btnElement) btnElement.classList.add('active');
 }
 
-// 5. SPATIAL DATA LOADING (Sanur GeoJSON Only)
+// 6. SPATIAL DATA LOADING
+let sanurParcelData = null;
+let clickedParcelId = null;
 let clickedBuildingId = null; 
 let currentPopup = null; 
 
@@ -310,6 +328,23 @@ map.on("load", () => {
     setPointerMode('pan');
     renderLayerControlUI();
 
+    // A. LOAD SANUR 2D PARCEL DATA
+    fetch("SanurParcel.geojson").then(r => r.json()).then(data => {
+        sanurParcelData = data;
+        map.addSource("sanur-parcel-source", { type: "geojson", data: data, promoteId: "NIB" });
+        map.addLayer({ id: "sanur-parcel-fill", type: "fill", source: "sanur-parcel-source", paint: { "fill-color": "#e74c3c", "fill-opacity": 0.3 } });
+        map.addLayer({ id: "sanur-parcel-outline", type: "line", source: "sanur-parcel-source", paint: { "line-color": "#c0392b", "line-width": 1.5 } });
+        map.addLayer({
+            id: "sanur-parcel-highlight", type: "line", source: "sanur-parcel-source",
+            paint: { "line-color": ["case", ["boolean", ["feature-state", "selected"], false], "#00FFFF", "transparent"], "line-width": 4 }
+        });
+
+        if (data.features && data.features.length > 0) {
+            map.fitBounds(turf.bbox(data), { padding: 50 });
+        }
+    }).catch(e => console.log("SanurParcel.geojson missing"));
+
+    // B. LOAD SANUR 3D BUILDINGS DATA
     fetch("Sanur.geojson").then(r => r.json()).then(dataSanur => {
         dataSanur.features.forEach((feature, index) => { feature.id = index; }); 
         map.addSource("sanur-buildings-source", { type: "geojson", data: dataSanur });
@@ -322,29 +357,15 @@ map.on("load", () => {
                 "fill-extrusion-opacity": 0.85
             }
         });
-
-        if (dataSanur.features && dataSanur.features.length > 0) {
-            map.fitBounds(turf.bbox(dataSanur), { padding: 50 });
-        }
     }).catch(e => console.log("Sanur.geojson missing"));
 });
-//6. HEIGHT BUILDING FILTER
-    function filterBuildingHeight(minHeight) {
-    const heightNum = parseFloat(minHeight);
-    document.getElementById('height-val').innerText = `${heightNum} m`;
 
-    if (!map.getLayer('sanur-buildings-3d')) return;
-
-    // Apply MapLibre GL JS filter expression:
-    // Only render polygons where 'tinggi_z' OR 'height' >= minHeight
-    map.setFilter('sanur-buildings-3d', [
-        '>=', 
-        ['coalesce', ['get', 'tinggi_z'], ['get', 'height'], 0], 
-        heightNum
-    ]);
-}
-// 7. CLEAR HIGHLIGHTS & IDENTIFY LOGIC
+// 7. CLEAR HIGHLIGHTS
 function clearAllHighlights() {
+    if (clickedParcelId !== null) {
+        map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: false });
+        clickedParcelId = null;
+    }
     if (clickedBuildingId !== null) { 
         if (map.getSource("sanur-buildings-source")) {
             map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: false }); 
@@ -352,41 +373,103 @@ function clearAllHighlights() {
         clickedBuildingId = null; 
     }
     if (currentPopup) { currentPopup.remove(); currentPopup = null; }
-    document.getElementById('tab-content-bangunan').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bangunan 3D di peta.</div>';
+
+    document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>';
+    document.getElementById('tab-content-bangunan').innerHTML = '<div class="info-placeholder">Klik bangunan 3D di peta.</div>';
+
+    document.getElementById('tab-btn-bidang').disabled = true;
+    document.getElementById('tab-btn-bangunan').disabled = true;
+    switchTab('bidang');
 }
 
+// 8. IDENTIFY LOGIC FOR PARCELS AND BUILDINGS
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
+    const featuresParcels = map.queryRenderedFeatures(e.point, { layers: ['sanur-parcel-fill'] });
     const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
-    if (!featuresBangunan.length) {
+
+    if (!featuresParcels.length && !featuresBangunan.length) {
         clearAllHighlights();
         return;
     }
 
     clearAllHighlights();
 
-    const feature = featuresBangunan[0];
-    clickedBuildingId = feature.id;
-    map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: true });
+    let firstTab = null;
 
-    const props = feature.properties;
-    let nama = props.id || props.gmlid || "Bangunan 3D Sanur";
+    // Handle 2D Parcel Inspection
+    const tabBtnBidang = document.getElementById('tab-btn-bidang');
+    const tabContentBidang = document.getElementById('tab-content-bidang');
+    if (featuresParcels.length > 0) {
+        const feature = featuresParcels[0];
+        clickedParcelId = feature.properties.NIB || feature.id;
+        map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
 
-    const html = `
-        <div class="popup-header">🏖️ ${nama}</div>
-        <div class="popup-body">
-            <div class="popup-row"><b>Tinggi:</b><span>${props.tinggi_z || props.height || '-'} m</span></div>
-            <div class="popup-row"><b>ID Objek:</b><span>${props.id || '-'}</span></div>
-        </div>
-    `;
-    currentPopup = new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+        let rows = `<table class="info-table">`;
+        for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
+        rows += `</table>`;
+        tabContentBidang.innerHTML = rows;
+        tabBtnBidang.disabled = false;
+        if (!firstTab) firstTab = 'bidang';
+    }
+
+    // Handle 3D Building Inspection
+    const tabBtnBangunan = document.getElementById('tab-btn-bangunan');
+    const tabContentBangunan = document.getElementById('tab-content-bangunan');
+    if (featuresBangunan.length > 0) {
+        const feature = featuresBangunan[0];
+        clickedBuildingId = feature.id;
+        map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: true });
+
+        const props = feature.properties;
+        let nama = props.id || props.gmlid || "Bangunan 3D Sanur";
+
+        const html = `
+            <div class="popup-header">🏖️ ${nama}</div>
+            <div class="popup-body">
+                <div class="popup-row"><b>Tinggi:</b><span>${props.tinggi_z || props.height || '-'} m</span></div>
+                <div class="popup-row"><b>ID Objek:</b><span>${props.id || '-'}</span></div>
+            </div>
+        `;
+        currentPopup = new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+
+        let rows = `<table class="info-table">`;
+        for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
+        rows += `</table>`;
+        tabContentBangunan.innerHTML = rows;
+        tabBtnBangunan.disabled = false;
+        if (!firstTab) firstTab = 'bangunan';
+    }
+
+    if (firstTab) switchTab(firstTab);
+});
+
+// 9. SEARCH BY SANUR NIB
+function searchNIBPanur() {
+    const input = document.getElementById("searchBoxSanur").value.trim();
+    if (!input || !sanurParcelData) return;
+    
+    const found = sanurParcelData.features.find(f => String(f.properties.NIB) === input);
+    if (!found) return alert("NIB Sanur tidak ditemukan!");
+
+    setPointerMode('point');
+    clearAllHighlights();
+
+    map.fitBounds(turf.bbox(found), { padding: 100 });
+
+    clickedParcelId = found.properties.NIB;
+    map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
 
     let rows = `<table class="info-table">`;
-    for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
+    for (const k in found.properties) { rows += `<tr><td>${k}</td><td>${found.properties[k]}</td></tr>`; }
     rows += `</table>`;
-    document.getElementById('tab-content-bangunan').innerHTML = rows;
-});
+
+    document.getElementById('tab-content-bidang').innerHTML = rows;
+    document.getElementById('tab-btn-bidang').disabled = false;
+    switchTab('bidang');
+}
+document.getElementById("searchBoxSanur").addEventListener("keypress", (e) => { if(e.key==="Enter") searchNIBPanur() });
 </script>
 </body>
 </html>
