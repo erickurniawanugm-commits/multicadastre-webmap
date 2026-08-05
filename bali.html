@@ -51,11 +51,6 @@
         .btn-mode { flex: 1; padding: 8px; font-size: 11px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
         .btn-mode.active { background: #002B49; color: #E5A823; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
 
-        /* TARGET SELECTION FILTER */
-        .target-toolbar { display: flex; gap: 4px; margin-top: 6px; }
-        .btn-target { flex: 1; padding: 6px; font-size: 11px; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc; cursor: pointer; border-radius: 4px; color: #475569; }
-        .btn-target.active { background: #E5A823; color: #002B49; border-color: #E5A823; font-weight: bold; }
-
         /* LAYER MANAGEMENT & REORDERING */
         .layer-list { display: flex; flex-direction: column; gap: 8px; }
         .layer-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
@@ -92,12 +87,6 @@
         .info-table td { padding: 4px 0; border-bottom: 1px solid #f1f5f9; word-break: break-all; }
         .info-table td:first-child { font-weight: 600; color: #002B49; width: 40%; }
 
-        /* POPUP FOR 3D BUILDINGS */
-        .maplibregl-popup-content { font-family: 'Segoe UI', sans-serif; border-radius: 6px; padding: 0; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.25); max-width: 260px; }
-        .popup-header { background: #002B49; color: #E5A823; padding: 6px 10px; font-weight: bold; font-size: 12px; }
-        .popup-body { padding: 10px; background: white; font-size: 11px; }
-        .popup-row { display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px dashed #eee; padding-bottom: 2px; }
-
         /* BASEMAP CONTROL */
         #basemap-control { position: absolute; bottom: 25px; right: 15px; z-index: 50; background: white; padding: 4px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: flex; gap: 4px; }
         .btn-map { padding: 5px 10px; border: 1px solid #cbd5e1; background: white; cursor: pointer; border-radius: 4px; font-size: 11px; font-weight: 600; color: #475569; }
@@ -114,20 +103,15 @@
 </div>
 
 <div id="sidebar">
-    <!-- CURSOR & TARGET MODE CONTROL -->
+    <!-- CURSOR MODE CONTROL -->
     <div>
         <h3>Mode Navigasi Peta</h3>
         <div class="mode-toolbar">
             <button id="btn-mode-pan" class="btn-mode active" onclick="setPointerMode('pan')">🖐️ Pan / Hold</button>
             <button id="btn-mode-point" class="btn-mode" onclick="setPointerMode('point')">🎯 Point / Identify</button>
         </div>
-        <div style="margin-top: 8px;">
-            <span style="font-size: 11px; font-weight: 600; color: #475569;">Target Klik Identify:</span>
-            <div class="target-toolbar">
-                <button id="target-both" class="btn-target active" onclick="setIdentifyTarget('both')">🔄 Semua</button>
-                <button id="target-parcel" class="btn-target" onclick="setIdentifyTarget('parcel')">🔴 Bidang Tanah</button>
-                <button id="target-building" class="btn-target" onclick="setIdentifyTarget('building')">🏖️ Bangunan 3D</button>
-            </div>
+        <div style="font-size:10px; color:#64748b; margin-top:4px;">
+            💡 <i>Tips: Tahan tombol <b>CTRL</b> saat klik bangunan untuk memilih beberapa bangunan sekaligus tanpa melepas bidang tanah.</i>
         </div>
     </div>
 
@@ -313,10 +297,8 @@ function filterBuildingHeight(minHeight) {
     ]);
 }
 
-// 4. CURSOR & IDENTIFY TARGET MODE SWITCHER
+// 4. CURSOR MODE SWITCHER
 let currentMode = 'pan'; 
-let identifyTarget = 'both'; // 'both', 'parcel', 'building'
-
 function setPointerMode(mode) {
     currentMode = mode;
     document.getElementById('btn-mode-pan').classList.toggle('active', mode === 'pan');
@@ -328,14 +310,6 @@ function setPointerMode(mode) {
         map.getCanvas().style.cursor = 'crosshair';
     }
 }
-
-function setIdentifyTarget(target) {
-    identifyTarget = target;
-    document.querySelectorAll('.btn-target').forEach(b => b.classList.remove('active'));
-    document.getElementById(`target-${target}`).classList.add('active');
-    setPointerMode('point');
-}
-
 map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
 map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
 
@@ -411,8 +385,7 @@ function setBasemap(type, btnElement) {
 let sanurParcelData = null;
 let sanurBuildingData = null;
 let clickedParcelId = null;
-let clickedBuildingId = null; 
-let currentPopup = null; 
+let selectedBuildingIds = new Set(); 
 
 map.on("load", () => {
     setPointerMode('pan');
@@ -452,7 +425,7 @@ map.on("load", () => {
     }).catch(e => console.log("Sanur.geojson missing"));
 });
 
-// 8. SPATIAL INTERSECTION QUERY (BUILDINGS INSIDE PARCEL)
+// 8. ROBUST SPATIAL OVERLAP QUERY (BUILDINGS OVER PARCEL)
 function analyzeBuildingsInParcel(parcelFeature) {
     if (!sanurBuildingData || !sanurBuildingData.features) return '';
 
@@ -460,13 +433,17 @@ function analyzeBuildingsInParcel(parcelFeature) {
 
     sanurBuildingData.features.forEach((b) => {
         try {
+            // Check building center point inside parcel
             const center = turf.centroid(b);
             if (turf.booleanPointInPolygon(center, parcelFeature)) {
                 insideBuildings.push(b);
             }
         } catch (err) {
             try {
-                if (turf.intersect(parcelFeature, b)) {
+                // Polygon-in-polygon intersection fallback
+                const polyB = turf.polygon(b.geometry.coordinates);
+                const polyP = turf.polygon(parcelFeature.geometry.coordinates);
+                if (turf.intersect(polyP, polyB)) {
                     insideBuildings.push(b);
                 }
             } catch (e) {}
@@ -499,96 +476,60 @@ function analyzeBuildingsInParcel(parcelFeature) {
 }
 
 // 9. CLEAR HIGHLIGHTS
-function clearAllHighlights() {
-    if (clickedParcelId !== null) {
+function clearAllHighlights(keepParcel = false) {
+    if (!keepParcel && clickedParcelId !== null) {
         map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: false });
         clickedParcelId = null;
+        document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>';
+        document.getElementById('tab-btn-bidang').disabled = true;
     }
-    if (clickedBuildingId !== null) { 
+
+    selectedBuildingIds.forEach(id => {
         if (map.getSource("sanur-buildings-source")) {
-            map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: false }); 
+            map.setFeatureState({ source: "sanur-buildings-source", id: id }, { selected: false });
         }
-        clickedBuildingId = null; 
-    }
-    if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+    });
+    selectedBuildingIds.clear();
 
-    document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>';
     document.getElementById('tab-content-bangunan').innerHTML = '<div class="info-placeholder">Klik bangunan 3D di peta.</div>';
-
-    document.getElementById('tab-btn-bidang').disabled = true;
     document.getElementById('tab-btn-bangunan').disabled = true;
-    switchTab('bidang');
+
+    if (!keepParcel) switchTab('bidang');
 }
 
-// 10. IDENTIFY & DESELECT LOGIC (WITH TARGET FILTER)
+// 10. IDENTIFY LOGIC WITH CTRL KEY MULTI-SELECT SUPPORT
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
-    let queryLayers = [];
-    if (identifyTarget === 'both') queryLayers = ['sanur-parcel-fill', 'sanur-buildings-3d'];
-    else if (identifyTarget === 'parcel') queryLayers = ['sanur-parcel-fill'];
-    else if (identifyTarget === 'building') queryLayers = ['sanur-buildings-3d'];
+    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
+    const featuresParcels = map.queryRenderedFeatures(e.point, { layers: ['sanur-parcel-fill'] });
 
-    const features = map.queryRenderedFeatures(e.point, { layers: queryLayers });
+    const isCtrlPressed = e.originalEvent.ctrlKey || e.originalEvent.metaKey;
 
-    if (!features.length) {
-        clearAllHighlights();
-        return;
-    }
+    // A. CLICKED A 3D BUILDING
+    if (featuresBangunan.length > 0) {
+        const feature = featuresBangunan[0];
+        const buildingId = feature.id;
 
-    const feature = features[0];
-    const isBuilding = feature.layer.id === 'sanur-buildings-3d';
-
-    if (!isBuilding) {
-        // --- 2D PARCEL CLICK ---
-        const parcelId = feature.properties.NIB || feature.id;
-        const currentState = map.getFeatureState({ source: "sanur-parcel-source", id: parcelId });
-
-        if (currentState && currentState.selected) {
-            clearAllHighlights();
-            return;
+        // If CTRL is NOT pressed, reset other selected buildings (and parcel)
+        if (!isCtrlPressed) {
+            clearAllHighlights(true); 
         }
 
-        clearAllHighlights();
-        clickedParcelId = parcelId;
-        map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
-
-        let rows = `<table class="info-table">`;
-        for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
-        rows += `</table>`;
-
-        rows += analyzeBuildingsInParcel(feature);
-
-        const tabBtnBidang = document.getElementById('tab-btn-bidang');
-        document.getElementById('tab-content-bidang').innerHTML = rows;
-        tabBtnBidang.disabled = false;
-        switchTab('bidang');
-    } else {
-        // --- 3D BUILDING CLICK ---
-        const buildingId = feature.id;
         const currentState = map.getFeatureState({ source: "sanur-buildings-source", id: buildingId });
 
         if (currentState && currentState.selected) {
-            clearAllHighlights();
-            return;
+            // Deselect building
+            map.setFeatureState({ source: "sanur-buildings-source", id: buildingId }, { selected: false });
+            selectedBuildingIds.delete(buildingId);
+        } else {
+            // Select building
+            map.setFeatureState({ source: "sanur-buildings-source", id: buildingId }, { selected: true });
+            selectedBuildingIds.add(buildingId);
         }
 
-        clearAllHighlights();
-        clickedBuildingId = buildingId;
-        map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: true });
-
+        // Render selected building information to sidebar
         const props = feature.properties;
-        let nama = props.id || props.gmlid || "Bangunan 3D Sanur";
-
-        const html = `
-            <div class="popup-header">🏖️ ${nama}</div>
-            <div class="popup-body">
-                <div class="popup-row"><b>Tinggi:</b><span>${props.tinggi_z || props.height || '-'} m</span></div>
-                <div class="popup-row"><b>ID Objek:</b><span>${props.id || '-'}</span></div>
-            </div>
-        `;
-        currentPopup = new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-
         let rows = `<table class="info-table">`;
         for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
         rows += `</table>`;
@@ -597,7 +538,41 @@ map.on("click", (e) => {
         document.getElementById('tab-content-bangunan').innerHTML = rows;
         tabBtnBangunan.disabled = false;
         switchTab('bangunan');
+        return;
     }
+
+    // B. CLICKED A 2D PARCEL
+    if (featuresParcels.length > 0) {
+        const feature = featuresParcels[0];
+        const parcelId = feature.properties.NIB || feature.id;
+        const currentState = map.getFeatureState({ source: "sanur-parcel-source", id: parcelId });
+
+        // Toggle deselect on parcel re-click
+        if (currentState && currentState.selected) {
+            clearAllHighlights(false);
+            return;
+        }
+
+        clearAllHighlights(false);
+        clickedParcelId = parcelId;
+        map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
+
+        let rows = `<table class="info-table">`;
+        for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
+        rows += `</table>`;
+
+        // Run building overlap query
+        rows += analyzeBuildingsInParcel(feature);
+
+        const tabBtnBidang = document.getElementById('tab-btn-bidang');
+        document.getElementById('tab-content-bidang').innerHTML = rows;
+        tabBtnBidang.disabled = false;
+        switchTab('bidang');
+        return;
+    }
+
+    // C. CLICKED EMPTY SPACE
+    clearAllHighlights(false);
 });
 
 // 11. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
@@ -609,7 +584,7 @@ function searchNIBPanur() {
     if (!found) return alert("NIB Sanur tidak ditemukan!");
 
     setPointerMode('point');
-    clearAllHighlights();
+    clearAllHighlights(false);
 
     map.fitBounds(turf.bbox(found), { padding: 100 });
 
@@ -620,6 +595,7 @@ function searchNIBPanur() {
     for (const k in found.properties) { rows += `<tr><td>${k}</td><td>${found.properties[k]}</td></tr>`; }
     rows += `</table>`;
 
+    // Compute 3D building overlap for searched parcel
     rows += analyzeBuildingsInParcel(found);
 
     document.getElementById('tab-content-bidang').innerHTML = rows;
