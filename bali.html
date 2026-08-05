@@ -126,7 +126,22 @@
             </div>
         </div>
     </div>
-
+<!-- FILTER TINGGI BANGUNAN -->
+<div>
+    <h3>Filter Tinggi Bangunan</h3>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
+            <span>Minimal Tinggi:</span>
+            <span id="height-val" style="color:#002B49; font-size:12px; font-weight:bold;">0 m</span>
+        </div>
+        <input type="range" id="heightSlider" min="0" max="50" step="1" value="0" style="width:100%; accent-color:#002B49; cursor:pointer;" oninput="filterBuildingHeight(this.value)">
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; margin-top:2px;">
+            <span>0m</span>
+            <span>25m</span>
+            <span>50m+</span>
+        </div>
+    </div>
+</div>
     <!-- TOOLS DRAWING -->
     <div>
         <h3>Pengukuran & Penggambaran</h3>
@@ -313,8 +328,22 @@ map.on("load", () => {
         }
     }).catch(e => console.log("Sanur.geojson missing"));
 });
+//6. HEIGHT BUILDING FILTER
+    function filterBuildingHeight(minHeight) {
+    const heightNum = parseFloat(minHeight);
+    document.getElementById('height-val').innerText = `${heightNum} m`;
 
-// 6. CLEAR HIGHLIGHTS & IDENTIFY LOGIC
+    if (!map.getLayer('sanur-buildings-3d')) return;
+
+    // Apply MapLibre GL JS filter expression:
+    // Only render polygons where 'tinggi_z' OR 'height' >= minHeight
+    map.setFilter('sanur-buildings-3d', [
+        '>=', 
+        ['coalesce', ['get', 'tinggi_z'], ['get', 'height'], 0], 
+        heightNum
+    ]);
+}
+// 7. CLEAR HIGHLIGHTS & IDENTIFY LOGIC
 function clearAllHighlights() {
     if (clickedBuildingId !== null) { 
         if (map.getSource("sanur-buildings-source")) {
