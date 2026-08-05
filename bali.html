@@ -48,8 +48,13 @@
 
         /* CURSOR MODES */
         .mode-toolbar { display: flex; gap: 6px; background: #edf2f7; padding: 4px; border-radius: 6px; border: 1px solid #cbd5e1; }
-        .btn-mode { flex: 1; padding: 8px; font-size: 12px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
+        .btn-mode { flex: 1; padding: 8px; font-size: 11px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
         .btn-mode.active { background: #002B49; color: #E5A823; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+
+        /* TARGET SELECTION FILTER */
+        .target-toolbar { display: flex; gap: 4px; margin-top: 6px; }
+        .btn-target { flex: 1; padding: 6px; font-size: 11px; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc; cursor: pointer; border-radius: 4px; color: #475569; }
+        .btn-target.active { background: #E5A823; color: #002B49; border-color: #E5A823; font-weight: bold; }
 
         /* LAYER MANAGEMENT & REORDERING */
         .layer-list { display: flex; flex-direction: column; gap: 8px; }
@@ -109,12 +114,20 @@
 </div>
 
 <div id="sidebar">
-    <!-- CURSOR MODE CONTROL -->
+    <!-- CURSOR & TARGET MODE CONTROL -->
     <div>
         <h3>Mode Navigasi Peta</h3>
         <div class="mode-toolbar">
             <button id="btn-mode-pan" class="btn-mode active" onclick="setPointerMode('pan')">🖐️ Pan / Hold</button>
             <button id="btn-mode-point" class="btn-mode" onclick="setPointerMode('point')">🎯 Point / Identify</button>
+        </div>
+        <div style="margin-top: 8px;">
+            <span style="font-size: 11px; font-weight: 600; color: #475569;">Target Klik Identify:</span>
+            <div class="target-toolbar">
+                <button id="target-both" class="btn-target active" onclick="setIdentifyTarget('both')">🔄 Semua</button>
+                <button id="target-parcel" class="btn-target" onclick="setIdentifyTarget('parcel')">🔴 Bidang Tanah</button>
+                <button id="target-building" class="btn-target" onclick="setIdentifyTarget('building')">🏖️ Bangunan 3D</button>
+            </div>
         </div>
     </div>
 
@@ -300,8 +313,10 @@ function filterBuildingHeight(minHeight) {
     ]);
 }
 
-// 4. CURSOR MODE SWITCHER
+// 4. CURSOR & IDENTIFY TARGET MODE SWITCHER
 let currentMode = 'pan'; 
+let identifyTarget = 'both'; // 'both', 'parcel', 'building'
+
 function setPointerMode(mode) {
     currentMode = mode;
     document.getElementById('btn-mode-pan').classList.toggle('active', mode === 'pan');
@@ -313,6 +328,14 @@ function setPointerMode(mode) {
         map.getCanvas().style.cursor = 'crosshair';
     }
 }
+
+function setIdentifyTarget(target) {
+    identifyTarget = target;
+    document.querySelectorAll('.btn-target').forEach(b => b.classList.remove('active'));
+    document.getElementById(`target-${target}`).classList.add('active');
+    setPointerMode('point');
+}
+
 map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
 map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
 
@@ -384,7 +407,7 @@ function setBasemap(type, btnElement) {
     if(btnElement) btnElement.classList.add('active');
 }
 
-// 7. SPATIAL DATA LOADING & ANALYSIS STORAGE
+// 7. SPATIAL DATA LOADING & STORAGE
 let sanurParcelData = null;
 let sanurBuildingData = null;
 let clickedParcelId = null;
@@ -437,14 +460,11 @@ function analyzeBuildingsInParcel(parcelFeature) {
 
     sanurBuildingData.features.forEach((b) => {
         try {
-            // Find centroid point of the 3D building polygon
             const center = turf.centroid(b);
-            // Check if building center sits inside the 2D parcel polygon
             if (turf.booleanPointInPolygon(center, parcelFeature)) {
                 insideBuildings.push(b);
             }
         } catch (err) {
-            // Polygon geometry fallback
             try {
                 if (turf.intersect(parcelFeature, b)) {
                     insideBuildings.push(b);
@@ -500,26 +520,30 @@ function clearAllHighlights() {
     switchTab('bidang');
 }
 
-// 10. IDENTIFY & TOGGLE DESELECT LOGIC
+// 10. IDENTIFY & DESELECT LOGIC (WITH TARGET FILTER)
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
-    const featuresParcels = map.queryRenderedFeatures(e.point, { layers: ['sanur-parcel-fill'] });
-    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
+    let queryLayers = [];
+    if (identifyTarget === 'both') queryLayers = ['sanur-parcel-fill', 'sanur-buildings-3d'];
+    else if (identifyTarget === 'parcel') queryLayers = ['sanur-parcel-fill'];
+    else if (identifyTarget === 'building') queryLayers = ['sanur-buildings-3d'];
 
-    // 1. Clicked empty space -> Clear everything
-    if (!featuresParcels.length && !featuresBangunan.length) {
+    const features = map.queryRenderedFeatures(e.point, { layers: queryLayers });
+
+    if (!features.length) {
         clearAllHighlights();
         return;
     }
 
-    // 2. Check 2D Parcel selection state
-    if (featuresParcels.length > 0) {
-        const feature = featuresParcels[0];
+    const feature = features[0];
+    const isBuilding = feature.layer.id === 'sanur-buildings-3d';
+
+    if (!isBuilding) {
+        // --- 2D PARCEL CLICK ---
         const parcelId = feature.properties.NIB || feature.id;
         const currentState = map.getFeatureState({ source: "sanur-parcel-source", id: parcelId });
 
-        // Toggle: If already selected -> DESELECT IT
         if (currentState && currentState.selected) {
             clearAllHighlights();
             return;
@@ -533,23 +557,17 @@ map.on("click", (e) => {
         for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
         rows += `</table>`;
 
-        // Compute 3D building overlap for this parcel
         rows += analyzeBuildingsInParcel(feature);
 
         const tabBtnBidang = document.getElementById('tab-btn-bidang');
         document.getElementById('tab-content-bidang').innerHTML = rows;
         tabBtnBidang.disabled = false;
         switchTab('bidang');
-        return;
-    }
-
-    // 3. Check 3D Building selection state
-    if (featuresBangunan.length > 0) {
-        const feature = featuresBangunan[0];
+    } else {
+        // --- 3D BUILDING CLICK ---
         const buildingId = feature.id;
         const currentState = map.getFeatureState({ source: "sanur-buildings-source", id: buildingId });
 
-        // Toggle: If already selected -> DESELECT IT
         if (currentState && currentState.selected) {
             clearAllHighlights();
             return;
@@ -602,7 +620,6 @@ function searchNIBPanur() {
     for (const k in found.properties) { rows += `<tr><td>${k}</td><td>${found.properties[k]}</td></tr>`; }
     rows += `</table>`;
 
-    // Compute 3D building overlap for searched parcel
     rows += analyzeBuildingsInParcel(found);
 
     document.getElementById('tab-content-bidang').innerHTML = rows;
