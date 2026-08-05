@@ -413,55 +413,62 @@ function clearAllHighlights() {
     switchTab('bidang');
 }
 
-// 8. IDENTIFY & DESELECT LOGIC
+// 8. IDENTIFY & TOGGLE DESELECT LOGIC
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
     const featuresParcels = map.queryRenderedFeatures(e.point, { layers: ['sanur-parcel-fill'] });
     const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
 
-    // Clicked empty space -> Clear
+    // 1. Clicked empty space -> Clear everything
     if (!featuresParcels.length && !featuresBangunan.length) {
         clearAllHighlights();
         return;
     }
 
-    let targetParcelId = featuresParcels.length > 0 ? (featuresParcels[0].properties.NIB || featuresParcels[0].id) : null;
-    let targetBuildingId = featuresBangunan.length > 0 ? featuresBangunan[0].id : null;
-
-    // Toggle Deselect if clicking the exact same object
-    if ((targetParcelId !== null && targetParcelId === clickedParcelId) || 
-        (targetBuildingId !== null && targetBuildingId === clickedBuildingId)) {
-        clearAllHighlights();
-        return;
-    }
-
-    clearAllHighlights();
-
-    let firstTab = null;
-
-    // Handle 2D Parcel Inspection
-    const tabBtnBidang = document.getElementById('tab-btn-bidang');
-    const tabContentBidang = document.getElementById('tab-content-bidang');
+    // 2. Check 2D Parcel selection state
     if (featuresParcels.length > 0) {
         const feature = featuresParcels[0];
-        clickedParcelId = targetParcelId;
+        const parcelId = feature.properties.NIB || feature.id;
+        const currentState = map.getFeatureState({ source: "sanur-parcel-source", id: parcelId });
+
+        // Easy Toggle: If already selected -> DESELECT IT
+        if (currentState && currentState.selected) {
+            clearAllHighlights();
+            return;
+        }
+
+        // Otherwise -> SELECT IT
+        clearAllHighlights();
+        clickedParcelId = parcelId;
         map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
 
         let rows = `<table class="info-table">`;
         for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
         rows += `</table>`;
-        tabContentBidang.innerHTML = rows;
+
+        const tabBtnBidang = document.getElementById('tab-btn-bidang');
+        document.getElementById('tab-content-bidang').innerHTML = rows;
         tabBtnBidang.disabled = false;
-        if (!firstTab) firstTab = 'bidang';
+        switchTab('bidang');
+        return;
     }
 
-    // Handle 3D Building Inspection
-    const tabBtnBangunan = document.getElementById('tab-btn-bangunan');
-    const tabContentBangunan = document.getElementById('tab-content-bangunan');
+    // 3. Check 3D Building selection state
     if (featuresBangunan.length > 0) {
         const feature = featuresBangunan[0];
-        clickedBuildingId = targetBuildingId;
+        const buildingId = feature.id;
+        const currentState = map.getFeatureState({ source: "sanur-buildings-source", id: buildingId });
+
+        // Easy Toggle: If already selected -> DESELECT IT
+        if (currentState && currentState.selected) {
+            clearAllHighlights();
+            return;
+        }
+
+        // Otherwise -> SELECT IT
+        clearAllHighlights();
+        clickedBuildingId = buildingId;
         map.setFeatureState({ source: "sanur-buildings-source", id: clickedBuildingId }, { selected: true });
 
         const props = feature.properties;
@@ -479,12 +486,12 @@ map.on("click", (e) => {
         let rows = `<table class="info-table">`;
         for (const k in props) { rows += `<tr><td>${k}</td><td>${props[k]}</td></tr>`; }
         rows += `</table>`;
-        tabContentBangunan.innerHTML = rows;
-        tabBtnBangunan.disabled = false;
-        if (!firstTab) firstTab = 'bangunan';
-    }
 
-    if (firstTab) switchTab(firstTab);
+        const tabBtnBangunan = document.getElementById('tab-btn-bangunan');
+        document.getElementById('tab-content-bangunan').innerHTML = rows;
+        tabBtnBangunan.disabled = false;
+        switchTab('bangunan');
+    }
 });
 
 // 9. SEARCH BY SANUR NIB
