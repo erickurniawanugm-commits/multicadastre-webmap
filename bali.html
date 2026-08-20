@@ -623,19 +623,40 @@ function analyzeBuildingsInParcel(parcelFeature) {
     if (!sanurBuildingData || !sanurBuildingData.features) return '';
 
     let insideBuildings = [];
+    const countedIds = new Set(); // Mencegah duplikasi ID bangunan yang sama
 
-    sanurBuildingData.features.forEach((b) => {
+    sanurBuildingData.features.forEach((b, idx) => {
         try {
-            const center = turf.centroid(b);
-            if (turf.booleanPointInPolygon(center, parcelFeature)) {
-                insideBuildings.push(b);
-            }
-        } catch (err) {
-            try {
-                if (turf.intersect(parcelFeature, b)) {
+            // A. Gunakan pointOnFeature (selalu berada di dalam tubuh poligon, bukan melayang)
+            const pointInside = turf.pointOnFeature(b);
+            const isInside = turf.booleanPointInPolygon(pointInside, parcelFeature);
+
+            if (isInside) {
+                const bId = b.properties.id || b.properties.gmlid || `bldg-${idx}`;
+                if (!countedIds.has(bId)) {
+                    countedIds.add(bId);
                     insideBuildings.push(b);
                 }
-            } catch (e) {}
+                return;
+            }
+
+            // B. Fallback: Hitung overlap area (hanya hitung jika minimal 25% bangunan masuk ke dalam persil)
+            const intersection = turf.intersect(turf.featureCollection([parcelFeature, b]));
+            if (intersection) {
+                const buildingArea = turf.area(b);
+                const overlapArea = turf.area(intersection);
+                
+                // Hanya anggap masuk jika overlap > 25% dari luas bangunan
+                if (buildingArea > 0 && (overlapArea / buildingArea) >= 0.25) {
+                    const bId = b.properties.id || b.properties.gmlid || `bldg-${idx}`;
+                    if (!countedIds.has(bId)) {
+                        countedIds.add(bId);
+                        insideBuildings.push(b);
+                    }
+                }
+            }
+        } catch (err) {
+            // Lewatkan jika ada geometri polygon yang rusak/invalid
         }
     });
 
@@ -663,7 +684,6 @@ function analyzeBuildingsInParcel(parcelFeature) {
     summaryHtml += `</div>`;
     return summaryHtml;
 }
-
 // 10. FLY TO BUILDING & HIGHLIGHT CARD ON CLICK
 function focusBuildingOnMap(bId) {
     const feature = selectedBuildingFeatures.get(bId);
