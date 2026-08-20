@@ -124,6 +124,7 @@
         .btn { padding: 6px 10px; background: white; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; color: #444; }
         .btn-primary { background: #002B49; color: white; border: none; }
         .btn-danger { background: #e74c3c; color: white; border: none; }
+        .btn-secondary { background: #64748b; color: white; border: none; }
         .draw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
         .btn-tool { text-align: center; padding: 6px; border: 1px solid #002B49; color: #002B49; background: #f4f8fb; }
 
@@ -205,11 +206,22 @@
 
     <!-- PENCARIAN NIB SANUR -->
     <div>
-        <h3>Pencarian NIB Sanur</h3>
+        <h3>Pencarian NIB Sanur (2D)</h3>
         <div style="display:flex; gap:5px;">
             <input id="searchBoxSanur" type="text" placeholder="Contoh NIB: 04070" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px;">
             <button class="btn btn-primary" onclick="searchNIBPanur()">Cari</button>
         </div>
+    </div>
+
+    <!-- PENCARIAN & FILTER ID BANGUNAN 3D -->
+    <div>
+        <h3>Pencarian & Filter ID Bangunan (3D)</h3>
+        <div style="display:flex; gap:5px;">
+            <input id="searchBoxBuilding" type="text" placeholder="Masukkan ID / gmlid" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px;">
+            <button class="btn btn-primary" onclick="filterBuildingById()">Cari</button>
+            <button class="btn btn-secondary" onclick="resetBuildingFilter()">Reset</button>
+        </div>
+        <div id="building-search-msg" style="font-size:10px; color:#0369a1; margin-top:4px;"></div>
     </div>
 
     <!-- FILTER TINGGI BANGUNAN -->
@@ -289,7 +301,6 @@
             <button class="btn-close-modal" onclick="toggleHelpModal(false)">✖</button>
         </div>
 
-        <!-- SPATIAL METADATA -->
         <h3 style="color:#002B49; margin-top:0;">🌐 Metadata Spesifikasi Data & CRS</h3>
         <table class="meta-table">
             <tr>
@@ -314,20 +325,19 @@
             </tr>
         </table>
 
-        <!-- USER TUTORIAL -->
         <h3 style="color:#002B49;">🎮 Panduan Navigasi & Operasi</h3>
         <ul style="padding-left: 18px; line-height: 1.6;">
             <li><b>Navigasi Keyboard:</b>
                 <ul>
-                    <li><b>W / S / A / D</b> atau <b>Panah</b>: Geser peta (Pan North/South/West/East).</li>
-                    <li><b>Q / E</b>: Rotasi peta (Rotate Bearing).</li>
+                    <li><b>W / S / A / D</b> atau <b>Panah</b>: Geser peta.</li>
+                    <li><b>Q / E</b>: Rotasi peta.</li>
                     <li><b>R / F</b>: Atur Kemiringan 3D (Tilt Pitch 0°–85°).</li>
                 </ul>
             </li>
-            <li><b>Identifikasi Bidang & Bangunan:</b> Aktifkan mode 🎯 <b>Point / Identify</b> pada sidebar kiri, lalu klik bidang tanah atau bangunan 3D di peta.</li>
-            <li><b>Multi-Pilih Bangunan 3D:</b> Tahan tombol <b>CTRL</b> pada keyboard sambil mengklik beberapa bangunan 3D untuk memilih multi-objek.</li>
-            <li><b>Interaksi Kartu Bangunan:</b> Klik kartu bangunan pada panel melayang sebelah kanan untuk melakukan terbang otomatis (<i>flyTo</i>) ke posisi bangunan tersebut.</li>
-            <li><b>Filter Tinggi:</b> Gunakan slider <b>Filter Tinggi Bangunan</b> di sidebar kiri untuk memfilter visualisasi bangunan berdasarkan rentang ketinggian secara realtime.</li>
+            <li><b>Pencarian & Filter Bangunan:</b> Cari ID / gmlid bangunan pada panel kiri untuk menyorot unit spesifik atau memfilter geometri kembar.</li>
+            <li><b>Identifikasi Objek:</b> Aktifkan mode 🎯 <b>Point / Identify</b> pada sidebar kiri, lalu klik bidang tanah atau bangunan 3D di peta.</li>
+            <li><b>Multi-Pilih Bangunan 3D:</b> Tahan tombol <b>CTRL</b> pada keyboard sambil mengklik beberapa bangunan 3D.</li>
+            <li><b>Interaksi Kartu Bangunan:</b> Klik kartu bangunan pada panel melayang kanan untuk <i>flyTo</i> ke lokasi bangunan.</li>
         </ul>
 
         <div style="text-align: right; margin-top: 15px;">
@@ -359,7 +369,7 @@ function toggleHelpModal(show) {
     document.getElementById('helpModal').style.display = show ? 'flex' : 'none';
 }
 
-// 2. KEYBOARD NAVIGATION (WASD + ARROW KEYS + Q/E + R/F)
+// 2. KEYBOARD NAVIGATION
 window.addEventListener('keydown', (e) => {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
 
@@ -476,19 +486,88 @@ function toggleLayerGroup(layerId, isVisible) {
     });
 }
 
-// 4. BUILDING HEIGHT FILTER
-function filterBuildingHeight(minHeight) {
-    const heightNum = parseFloat(minHeight);
-    document.getElementById('height-val').innerText = `${heightNum} m`;
+// 4. BUILDING HEIGHT & ID FILTERS
+let currentMinHeight = 0;
+let currentBuildingIdFilter = null;
 
+function applyBuildingLayerFilter() {
     if (!map.getLayer('sanur-buildings-3d')) return;
 
-    map.setFilter('sanur-buildings-3d', [
+    const heightCondition = [
         '>=', 
         ['coalesce', ['get', 'tinggi_z'], ['get', 'height'], 0], 
-        heightNum
-    ]);
+        currentMinHeight
+    ];
+
+    if (currentBuildingIdFilter) {
+        map.setFilter('sanur-buildings-3d', [
+            'all',
+            heightCondition,
+            ['any',
+                ['==', ['to-string', ['coalesce', ['get', 'id'], '']], currentBuildingIdFilter],
+                ['==', ['to-string', ['coalesce', ['get', 'gmlid'], '']], currentBuildingIdFilter]
+            ]
+        ]);
+    } else {
+        map.setFilter('sanur-buildings-3d', heightCondition);
+    }
 }
+
+function filterBuildingHeight(minHeight) {
+    currentMinHeight = parseFloat(minHeight);
+    document.getElementById('height-val').innerText = `${currentMinHeight} m`;
+    applyBuildingLayerFilter();
+}
+
+function filterBuildingById() {
+    const inputVal = document.getElementById("searchBoxBuilding").value.trim();
+    const msg = document.getElementById("building-search-msg");
+
+    if (!inputVal) {
+        resetBuildingFilter();
+        return;
+    }
+
+    if (!sanurBuildingData || !sanurBuildingData.features) return;
+
+    // Cari semua fitur bangunan yang memiliki ID atau gmlid yang cocok
+    const matches = sanurBuildingData.features.filter(f => {
+        const p = f.properties || {};
+        return String(p.id) === inputVal || String(p.gmlid) === inputVal;
+    });
+
+    if (matches.length === 0) {
+        msg.style.color = "#e74c3c";
+        msg.innerText = `⚠️ Bangunan ID "${inputVal}" tidak ditemukan!`;
+        return;
+    }
+
+    currentBuildingIdFilter = inputVal;
+    applyBuildingLayerFilter();
+
+    msg.style.color = "#0369a1";
+    msg.innerText = `✅ Ditemukan ${matches.length} bagian poligon dengan ID "${inputVal}".`;
+
+    // Zoom ke geometri bangunan yang ditemukan
+    const fc = turf.featureCollection(matches);
+    map.fitBounds(turf.bbox(fc), { padding: 100 });
+
+    // Otomatis pilih di panel kanan
+    clearAllHighlights(true);
+    matches.forEach(m => {
+        map.setFeatureState({ source: "sanur-buildings-source", id: m.id }, { selected: true });
+        selectedBuildingFeatures.set(m.id, m);
+    });
+    updateBuildingRightPanel();
+}
+
+function resetBuildingFilter() {
+    document.getElementById("searchBoxBuilding").value = "";
+    document.getElementById("building-search-msg").innerText = "";
+    currentBuildingIdFilter = null;
+    applyBuildingLayerFilter();
+}
+document.getElementById("searchBoxBuilding").addEventListener("keypress", (e) => { if(e.key==="Enter") filterBuildingById() });
 
 // 5. CURSOR MODE SWITCHER
 let currentMode = 'pan'; 
@@ -618,46 +697,41 @@ map.on("load", () => {
     }).catch(e => console.log("Sanur.geojson missing"));
 });
 
-// 9. ROBUST SPATIAL OVERLAP QUERY
+// 9. ROBUST SPATIAL OVERLAP QUERY WITH DEDUPLICATION
 function analyzeBuildingsInParcel(parcelFeature) {
     if (!sanurBuildingData || !sanurBuildingData.features) return '';
 
     let insideBuildings = [];
-    const countedIds = new Set(); // Mencegah duplikasi ID bangunan yang sama
+    const countedKeys = new Set(); // Mencegah hitung ganda ID/gmlid kembar
 
     sanurBuildingData.features.forEach((b, idx) => {
         try {
-            // A. Gunakan pointOnFeature (selalu berada di dalam tubuh poligon, bukan melayang)
+            const bProps = b.properties || {};
+            const uniqueKey = bProps.id || bProps.gmlid || `idx-${idx}`;
+
             const pointInside = turf.pointOnFeature(b);
             const isInside = turf.booleanPointInPolygon(pointInside, parcelFeature);
 
             if (isInside) {
-                const bId = b.properties.id || b.properties.gmlid || `bldg-${idx}`;
-                if (!countedIds.has(bId)) {
-                    countedIds.add(bId);
+                if (!countedKeys.has(uniqueKey)) {
+                    countedKeys.add(uniqueKey);
                     insideBuildings.push(b);
                 }
                 return;
             }
 
-            // B. Fallback: Hitung overlap area (hanya hitung jika minimal 25% bangunan masuk ke dalam persil)
             const intersection = turf.intersect(turf.featureCollection([parcelFeature, b]));
             if (intersection) {
-                const buildingArea = turf.area(b);
-                const overlapArea = turf.area(intersection);
-                
-                // Hanya anggap masuk jika overlap > 25% dari luas bangunan
-                if (buildingArea > 0 && (overlapArea / buildingArea) >= 0.25) {
-                    const bId = b.properties.id || b.properties.gmlid || `bldg-${idx}`;
-                    if (!countedIds.has(bId)) {
-                        countedIds.add(bId);
+                const bArea = turf.area(b);
+                const iArea = turf.area(intersection);
+                if (bArea > 0 && (iArea / bArea) >= 0.25) {
+                    if (!countedKeys.has(uniqueKey)) {
+                        countedKeys.add(uniqueKey);
                         insideBuildings.push(b);
                     }
                 }
             }
-        } catch (err) {
-            // Lewatkan jika ada geometri polygon yang rusak/invalid
-        }
+        } catch (err) {}
     });
 
     let summaryHtml = `
@@ -684,6 +758,7 @@ function analyzeBuildingsInParcel(parcelFeature) {
     summaryHtml += `</div>`;
     return summaryHtml;
 }
+
 // 10. FLY TO BUILDING & HIGHLIGHT CARD ON CLICK
 function focusBuildingOnMap(bId) {
     const feature = selectedBuildingFeatures.get(bId);
