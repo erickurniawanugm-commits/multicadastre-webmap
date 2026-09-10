@@ -700,34 +700,62 @@ map.on("load", () => {
         renderLayerControlUI();
     }).catch(e => console.log("Sanur.geojson missing"));
 
-    // C. FETCH DATA BHUMITARA_DPS (3D UNIT PER LANTAI)
-    fetch("Bhumitara_DPS.geojson")
-        .then(r => r.json())
-        .then(dataBhumitara => {
-            bhumitaraData = dataBhumitara;
-            dataBhumitara.features.forEach((feature, index) => { feature.id = index; }); 
+    // C. FETCH DATA BHUMITARA_DPS (3D UNIT PER LANTAI) - FIXED
+fetch("Bhumitara_DPS.geojson")
+    .then(r => r.json())
+    .then(dataBhumitara => {
+        // 1. Sanitisasi Data: Hapus nilai Z=0.0 dari koordinat & set ID Unik
+        dataBhumitara.features.forEach((feature, index) => {
+            feature.id = index; // Menjamin featureState MapLibre bekerja
+            
+            // Konversi Z_MIN & Z_MAX ke Number jika bertipe String
+            if (feature.properties) {
+                feature.properties.Z_MIN = parseFloat(feature.properties.Z_MIN) || 0;
+                feature.properties.Z_MAX = parseFloat(feature.properties.Z_MAX) || 3;
+            }
 
-            map.addSource("bhumitara-source", { type: "geojson", data: dataBhumitara });
+            // Bersihkan koordinat 3D [lon, lat, 0.0] menjadi 2D [lon, lat]
+            if (feature.geometry && feature.geometry.coordinates) {
+                feature.geometry.coordinates = feature.geometry.coordinates.map(ring => {
+                    return ring.map(coord => [coord[0], coord[1]]);
+                });
+            }
+        });
 
-            map.addLayer({
-                id: "bhumitara-units-3d",
-                type: "fill-extrusion",
-                source: "bhumitara-source",
-                paint: {
-                    "fill-extrusion-color": [
-                        "case",
-                        ["boolean", ["feature-state", "selected"], false], "#f39c12",
-                        "#00a8ff"
-                    ],
-                    "fill-extrusion-base": ["coalesce", ["get", "Z_MIN"], 0],
-                    "fill-extrusion-height": ["coalesce", ["get", "Z_MAX"], 3],
-                    "fill-extrusion-opacity": 0.9
-                }
-            });
+        bhumitaraData = dataBhumitara;
 
-            renderLayerControlUI();
-        })
-        .catch(e => console.error("Gagal memuat Bhumitara_DPS.geojson:", e));
+        // 2. Tambahkan Source ke MapLibre
+        map.addSource("bhumitara-source", { 
+            type: "geojson", 
+            data: dataBhumitara 
+        });
+
+        // 3. Tambahkan Layer Fill-Extrusion 3D
+        map.addLayer({
+            id: "bhumitara-units-3d",
+            type: "fill-extrusion",
+            source: "bhumitara-source",
+            paint: {
+                "fill-extrusion-color": [
+                    "case",
+                    ["boolean", ["feature-state", "selected"], false], "#f39c12", // Oranye saat diklik
+                    "#00a8ff" // Biru Cerah default
+                ],
+                "fill-extrusion-base": ["get", "Z_MIN"],
+                "fill-extrusion-height": ["get", "Z_MAX"],
+                "fill-extrusion-opacity": 0.85
+            }
+        });
+
+        // 4. Auto-Zoom ke Lokasi Bhumitara jika layer bidang belum di-load
+        if (dataBhumitara.features && dataBhumitara.features.length > 0) {
+            const bbox = turf.bbox(dataBhumitara);
+            map.fitBounds(bbox, { padding: 80, pitch: 50 });
+        }
+
+        renderLayerControlUI();
+    })
+    .catch(e => console.error("Gagal memuat Bhumitara_DPS.geojson:", e));
 });
 
 // 9. ROBUST SPATIAL OVERLAP QUERY WITH DEDUPLICATION
