@@ -412,7 +412,9 @@ window.addEventListener('keydown', (e) => {
 // 3. LAYER REGISTRATION & DYNAMIC UI
 let layerStack = [
     { id: 'bidang_sanur', name: '🔴 Bidang Tanah Sanur', fillId: 'sanur-parcel-fill', outlineId: 'sanur-parcel-outline', highlightId: 'sanur-parcel-highlight', opacity: 0.3, visible: true, type: 'fill' },
-    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' }
+    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur (Eksisting)', fillId: 'sanur-buildings-3d', opacity: 0.3, visible: true, type: 'fill-extrusion' },
+    { id: 'bhumitara_dps', name: '🏢 Unit Multi-Lantai Bhumitara', fillId: 'bhumitara-units-3d', opacity: 0.9, visible: true, type: 'fill-extrusion' }
+];
 ];
 
 function renderLayerControlUI() {
@@ -692,6 +694,41 @@ map.on("load", () => {
                 "fill-extrusion-base": 0,
                 "fill-extrusion-opacity": 0.85
             }
+            // FETCH DATA BHUMITARA_DPS (3D UNIT PER LANTAI)
+let bhumitaraData = null;
+
+fetch("Bhumitara_DPS.geojson")
+    .then(r => r.json())
+    .then(dataBhumitara => {
+        bhumitaraData = dataBhumitara;
+        dataBhumitara.features.forEach((feature, index) => { feature.id = index; }); 
+
+        map.addSource("bhumitara-source", { type: "geojson", data: dataBhumitara });
+
+        map.addLayer({
+            id: "bhumitara-units-3d",
+            type: "fill-extrusion",
+            source: "bhumitara-source",
+            paint: {
+                // Warna default unit / highlight saat dipilih
+                "fill-extrusion-color": [
+                    "case",
+                    ["boolean", ["feature-state", "selected"], false], "#f39c12", // Warna saat diklik
+                    "#00a8ff" // Warna default unit 3D
+                ],
+                // Menggunakan Z_MIN sebagai dasar dan Z_MAX sebagai batas atas
+                "fill-extrusion-base": ["coalesce", ["get", "Z_MIN"], 0],
+                "fill-extrusion-height": ["coalesce", ["get", "Z_MAX"], 3],
+                "fill-extrusion-opacity": 0.9
+            }
+        });
+
+        // Refresh UI kontrol layer jika ada
+        if (typeof renderLayerControlUI === 'function') {
+            renderLayerControlUI();
+        }
+    })
+    .catch(e => console.error("Gagal memuat Bhumitara_DPS.geojson:", e));
         });
         renderLayerControlUI();
     }).catch(e => console.log("Sanur.geojson missing"));
@@ -905,6 +942,28 @@ map.on("click", (e) => {
 
     // C. CLICKED EMPTY SPACE
     clearAllHighlights(false);
+
+    //D. CLICKED BHUMITARA
+    const featuresBhumitara = map.queryRenderedFeatures(e.point, { layers: ['bhumitara-units-3d'] });
+
+if (featuresBhumitara.length > 0) {
+    const feature = featuresBhumitara[0];
+    const unitId = feature.id;
+
+    if (!isCtrlPressed) clearAllHighlights(true);
+
+    const currentState = map.getFeatureState({ source: "bhumitara-source", id: unitId });
+    if (currentState && currentState.selected) {
+        map.setFeatureState({ source: "bhumitara-source", id: unitId }, { selected: false });
+        selectedBuildingFeatures.delete(`bhumitara-${unitId}`);
+    } else {
+        map.setFeatureState({ source: "bhumitara-source", id: unitId }, { selected: true });
+        selectedBuildingFeatures.set(`bhumitara-${unitId}`, feature);
+    }
+
+    updateBuildingRightPanel(); // Tampilkan atribut unit di panel kanan
+    return;
+}
 });
 
 // 14. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
