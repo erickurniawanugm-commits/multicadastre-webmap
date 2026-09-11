@@ -757,50 +757,52 @@ fetch("Bhumitara_DPS.geojson")
             data: dataBhumitara
         });
 
-        // 1. LAYER EKSTRUSI TRANSPARAN (BODY UNIT)
-        map.addLayer({
-            id: "bhumitara-units-3d",
-            type: "fill-extrusion",
-            source: "bhumitara-source",
-            paint: {
-                // Warna dinamis berdasarkan ketinggian Z_MIN (Lantai)
-                "fill-extrusion-color": [
-                    "case",
-                    ["boolean", ["feature-state", "selected"], false], "#f39c12", // Oranye saat diklik
-                    [
-                        "interpolate",
-                        ["linear"],
-                        ["get", "Z_MIN"],
-                        0, "#00d2d3",   // Lantai Dasar: Cyan
-                        6, "#54a0ff",   // Lantai Tengah: Biru
-                        12, "#5f27cd"   // Lantai Atas: Ungu
-                    ]
-                ],
-                "fill-extrusion-base": ["get", "Z_MIN"],
-                "fill-extrusion-height": ["get", "Z_MAX"],
-                // Opacity dibuat tipis (0.35) agar terawang sampai ke unit dalam
-                "fill-extrusion-opacity": 0.35
-            }
-        });
-
-        // 2. LAYER OUTLINE KERANGKA (WIRE FRAME BOUNDARY)
-        // Menampilkan garis tegas pembatas antar-unit 3D
-        map.addLayer({
-            id: "bhumitara-units-outline",
-            type: "line",
-            source: "bhumitara-source",
-            paint: {
-                "line-color": "#ffffff",
-                "line-width": 1.5,
-                "line-opacity": 0.8
-            }
-        });
-
-        renderLayerControlUI();
-    })
-    .catch(e => console.error("Gagal memuat Bhumitara_DPS.geojson:", e));
+       // 1. LAYER BODY 3D (X-RAY MAGENTA GLASS)
+map.addLayer({
+    id: "bhumitara-units-3d",
+    type: "fill-extrusion",
+    source: "bhumitara-source",
+    paint: {
+        // Efek warna Magenta/Pink transparan khas CAD 3D Cadastre
+        "fill-extrusion-color": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false], "#00fff2", // Highlight Cyan terang saat diklik
+            "#e056fd"                                                  // Magenta / Orchid Violet
+        ],
+        "fill-extrusion-base": ["get", "Z_MIN"],
+        "fill-extrusion-height": ["get", "Z_MAX"],
+        // Opacity semi-transparan (0.3) agar ruangan dalam & lantai bawah terlihat jelas
+        "fill-extrusion-opacity": 0.30
+    }
 });
 
+// 2. LAYER ATAP / TOP SLAB (CYAN GLASS ROOF)
+// Meniru efek permukaan atas berwarna Cyan transparan di gambar
+map.addLayer({
+    id: "bhumitara-units-top",
+    type: "fill-extrusion",
+    source: "bhumitara-source",
+    paint: {
+        "fill-extrusion-color": "#7efff5", // Light Cyan / Kaca Es
+        // Dibuat sedikit di bawah Z_MAX agar berada tepat di plafon/atap
+        "fill-extrusion-base": ["-", ["get", "Z_MAX"], 0.15],
+        "fill-extrusion-height": ["get", "Z_MAX"],
+        "fill-extrusion-opacity": 0.65
+    }
+});
+
+// 3. LAYER WIREFRAME / OUTLINE SEKAT RUANG TEGAS
+map.addLayer({
+    id: "bhumitara-units-wireframe",
+    type: "line",
+    source: "bhumitara-source",
+    paint: {
+        "line-color": "#be2edd",        // Deep Magenta Border (Garis Tepi Kontras)
+        "line-width": 2.0,              // Ketebalan garis sekat
+        "line-opacity": 0.95
+    }
+});
+        
 // 9. ROBUST SPATIAL OVERLAP QUERY WITH DEDUPLICATION
 function analyzeBuildingsInParcel(parcelFeature) {
     if (!sanurBuildingData || !sanurBuildingData.features) return '';
