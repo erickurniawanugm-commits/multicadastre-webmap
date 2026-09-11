@@ -203,7 +203,17 @@
             💡 <i>Tips: Gunakan <b>WASD / Panah</b> untuk geser peta, <b>Q/E</b> rotasi, <b>R/F</b> tilt 3D, dan <b>CTRL+Klik</b> pilih multi bangunan.</i>
         </div>
     </div>
-
+<!-- SLIDER LANTAI  -->
+<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #cbd5e1;">
+    <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #002B49;">Filter Floor Slicing (3D)</h4>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
+            <span>Tampilkan S/D Ketinggian:</span>
+            <span id="floor-val" style="color:#002B49; font-size:12px; font-weight:bold;">Semua Lantai</span>
+        </div>
+        <input type="range" id="floorSlider" min="0" max="60" step="3" value="60" style="width:100%; cursor:pointer;" oninput="filterFloorElevation(this.value)">
+    </div>
+</div>
     <!-- PENCARIAN NIB SANUR -->
     <div>
         <h3>Pencarian NIB Sanur (2D)</h3>
@@ -491,7 +501,23 @@ function toggleLayerGroup(layerId, isVisible) {
         }
     });
 }
+// Ditaruh di dalam tag <script> utama
+function filterFloorElevation(maxZ) {
+    const val = parseFloat(maxZ);
+    const label = document.getElementById('floor-val');
+    
+    // Pastikan layer Bhumitara sudah ter-load di peta
+    if (!map.getLayer('bhumitara-units-3d')) return;
 
+    if (val >= 60) {
+        label.innerText = "Semua Lantai";
+        map.setFilter('bhumitara-units-3d', null);
+    } else {
+        label.innerText = `${val} Meter (Lantai 1-${Math.max(1, Math.round(val/3))})`;
+        // Sembunyikan unit yang Z_MIN-nya berada di atas slider
+        map.setFilter('bhumitara-units-3d', ['<', ['get', 'Z_MIN'], val]);
+    }
+}
 // 4. BUILDING HEIGHT & ID FILTERS
 let currentMinHeight = 0;
 let currentBuildingIdFilter = null;
