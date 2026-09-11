@@ -700,14 +700,13 @@ map.on("load", () => {
         renderLayerControlUI();
     }).catch(e => console.log("Sanur.geojson missing"));
 
-// C. FETCH DATA BHUMITARA_DPS (FIXED GEOMETRY STRUCTURE)
+// C. FETCH DATA BHUMITARA_DPS (X-RAY / GLASS STYLE)
 fetch("Bhumitara_DPS.geojson")
     .then(r => r.json())
     .then(dataBhumitara => {
-        // Helper function untuk membersihkan koordinat Z secara rekursif tanpa merusak MultiPolygon
         function stripZCoords(coords) {
             if (typeof coords[0] === 'number') {
-                return [coords[0], coords[1]]; // Ambil hanya [lon, lat]
+                return [coords[0], coords[1]];
             }
             return coords.map(stripZCoords);
         }
@@ -715,13 +714,11 @@ fetch("Bhumitara_DPS.geojson")
         dataBhumitara.features.forEach((feature, index) => {
             feature.id = index;
 
-            // Memastikan properti numerik
             if (feature.properties) {
                 feature.properties.Z_MIN = Number(feature.properties.Z_MIN) || 0;
                 feature.properties.Z_MAX = Number(feature.properties.Z_MAX) || 3;
             }
 
-            // Bersihkan Z pada geometri tanpa merusak struktur Polygon/MultiPolygon
             if (feature.geometry && feature.geometry.coordinates) {
                 feature.geometry.coordinates = stripZCoords(feature.geometry.coordinates);
             }
@@ -734,21 +731,42 @@ fetch("Bhumitara_DPS.geojson")
             data: dataBhumitara
         });
 
+        // 1. LAYER EKSTRUSI TRANSPARAN (BODY UNIT)
         map.addLayer({
             id: "bhumitara-units-3d",
             type: "fill-extrusion",
             source: "bhumitara-source",
             paint: {
+                // Warna dinamis berdasarkan ketinggian Z_MIN (Lantai)
                 "fill-extrusion-color": [
                     "case",
-                    ["boolean", ["feature-state", "selected"], false], "#f39c12",
-                    "#00a8ff"
+                    ["boolean", ["feature-state", "selected"], false], "#f39c12", // Oranye saat diklik
+                    [
+                        "interpolate",
+                        ["linear"],
+                        ["get", "Z_MIN"],
+                        0, "#00d2d3",   // Lantai Dasar: Cyan
+                        6, "#54a0ff",   // Lantai Tengah: Biru
+                        12, "#5f27cd"   // Lantai Atas: Ungu
+                    ]
                 ],
-                // Z_MIN sebagai dasar elevasi melayang
                 "fill-extrusion-base": ["get", "Z_MIN"],
-                // Z_MAX sebagai tinggi puncak objek dari tanah
                 "fill-extrusion-height": ["get", "Z_MAX"],
-                "fill-extrusion-opacity": 0.85
+                // Opacity dibuat tipis (0.35) agar terawang sampai ke unit dalam
+                "fill-extrusion-opacity": 0.35
+            }
+        });
+
+        // 2. LAYER OUTLINE KERANGKA (WIRE FRAME BOUNDARY)
+        // Menampilkan garis tegas pembatas antar-unit 3D
+        map.addLayer({
+            id: "bhumitara-units-outline",
+            type: "line",
+            source: "bhumitara-source",
+            paint: {
+                "line-color": "#ffffff",
+                "line-width": 1.5,
+                "line-opacity": 0.8
             }
         });
 
