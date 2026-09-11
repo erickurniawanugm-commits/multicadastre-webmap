@@ -700,34 +700,61 @@ map.on("load", () => {
         renderLayerControlUI();
     }).catch(e => console.log("Sanur.geojson missing"));
 
-    // C. FETCH DATA BHUMITARA_DPS (3D UNIT PER LANTAI)
-    fetch("Bhumitara_DPS.geojson")
-        .then(r => r.json())
-        .then(dataBhumitara => {
-            bhumitaraData = dataBhumitara;
-            dataBhumitara.features.forEach((feature, index) => { feature.id = index; }); 
+// C. FETCH DATA BHUMITARA_DPS (FIXED GEOMETRY STRUCTURE)
+fetch("Bhumitara_DPS.geojson")
+    .then(r => r.json())
+    .then(dataBhumitara => {
+        // Helper function untuk membersihkan koordinat Z secara rekursif tanpa merusak MultiPolygon
+        function stripZCoords(coords) {
+            if (typeof coords[0] === 'number') {
+                return [coords[0], coords[1]]; // Ambil hanya [lon, lat]
+            }
+            return coords.map(stripZCoords);
+        }
 
-            map.addSource("bhumitara-source", { type: "geojson", data: dataBhumitara });
+        dataBhumitara.features.forEach((feature, index) => {
+            feature.id = index;
 
-            map.addLayer({
-                id: "bhumitara-units-3d",
-                type: "fill-extrusion",
-                source: "bhumitara-source",
-                paint: {
-                    "fill-extrusion-color": [
-                        "case",
-                        ["boolean", ["feature-state", "selected"], false], "#f39c12",
-                        "#00a8ff"
-                    ],
-                    "fill-extrusion-base": ["coalesce", ["get", "Z_MIN"], 0],
-                    "fill-extrusion-height": ["coalesce", ["get", "Z_MAX"], 3],
-                    "fill-extrusion-opacity": 0.9
-                }
-            });
+            // Memastikan properti numerik
+            if (feature.properties) {
+                feature.properties.Z_MIN = Number(feature.properties.Z_MIN) || 0;
+                feature.properties.Z_MAX = Number(feature.properties.Z_MAX) || 3;
+            }
 
-            renderLayerControlUI();
-        })
-        .catch(e => console.error("Gagal memuat Bhumitara_DPS.geojson:", e));
+            // Bersihkan Z pada geometri tanpa merusak struktur Polygon/MultiPolygon
+            if (feature.geometry && feature.geometry.coordinates) {
+                feature.geometry.coordinates = stripZCoords(feature.geometry.coordinates);
+            }
+        });
+
+        bhumitaraData = dataBhumitara;
+
+        map.addSource("bhumitara-source", {
+            type: "geojson",
+            data: dataBhumitara
+        });
+
+        map.addLayer({
+            id: "bhumitara-units-3d",
+            type: "fill-extrusion",
+            source: "bhumitara-source",
+            paint: {
+                "fill-extrusion-color": [
+                    "case",
+                    ["boolean", ["feature-state", "selected"], false], "#f39c12",
+                    "#00a8ff"
+                ],
+                // Z_MIN sebagai dasar elevasi melayang
+                "fill-extrusion-base": ["get", "Z_MIN"],
+                // Z_MAX sebagai tinggi puncak objek dari tanah
+                "fill-extrusion-height": ["get", "Z_MAX"],
+                "fill-extrusion-opacity": 0.85
+            }
+        });
+
+        renderLayerControlUI();
+    })
+    .catch(e => console.error("Gagal memuat Bhumitara_DPS.geojson:", e));
 });
 
 // 9. ROBUST SPATIAL OVERLAP QUERY WITH DEDUPLICATION
