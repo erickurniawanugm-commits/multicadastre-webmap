@@ -203,17 +203,19 @@
             💡 <i>Tips: Gunakan <b>WASD / Panah</b> untuk geser peta, <b>Q/E</b> rotasi, <b>R/F</b> tilt 3D, dan <b>CTRL+Klik</b> pilih multi bangunan.</i>
         </div>
     </div>
-<!-- SLIDER LANTAI  -->
-<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #cbd5e1;">
-    <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #002B49;">Filter Floor Slicing (3D)</h4>
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
-            <span>Tampilkan S/D Ketinggian:</span>
-            <span id="floor-val" style="color:#002B49; font-size:12px; font-weight:bold;">Semua Lantai</span>
+
+    <!-- SLIDER LANTAI -->
+    <div style="margin-top: 5px; padding-top: 5px; border-top: 1px solid #cbd5e1;">
+        <h3>Filter Floor Slicing (3D)</h3>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
+                <span>Tampilkan S/D Ketinggian:</span>
+                <span id="floor-val" style="color:#002B49; font-size:12px; font-weight:bold;">Semua Lantai</span>
+            </div>
+            <input type="range" id="floorSlider" min="0" max="60" step="3" value="60" style="width:100%; cursor:pointer;" oninput="filterFloorElevation(this.value)">
         </div>
-        <input type="range" id="floorSlider" min="0" max="60" step="3" value="60" style="width:100%; cursor:pointer;" oninput="filterFloorElevation(this.value)">
     </div>
-</div>
+
     <!-- PENCARIAN NIB SANUR -->
     <div>
         <h3>Pencarian NIB Sanur (2D)</h3>
@@ -291,7 +293,7 @@
 <!-- FLOATING RIGHT BUILDING INFORMATION PANEL -->
 <div id="right-building-panel">
     <div class="right-panel-header">
-        <span>🏢 Informasi Bangunan 3D</span>
+        <span>🏢 Informasi Objek 3D / Ruang</span>
         <button class="btn-remove-building" onclick="clearAllHighlights(true)">✖ Close</button>
     </div>
     <div id="right-building-content"></div>
@@ -426,8 +428,8 @@ window.addEventListener('keydown', (e) => {
 // 3. LAYER REGISTRATION & DYNAMIC UI
 let layerStack = [
     { id: 'bidang_sanur', name: '🔴 Bidang Tanah Sanur', fillId: 'sanur-parcel-fill', outlineId: 'sanur-parcel-outline', highlightId: 'sanur-parcel-highlight', opacity: 0.3, visible: true, type: 'fill' },
-    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur (Eksisting)', fillId: 'sanur-buildings-3d', opacity: 0.85, visible: true, type: 'fill-extrusion' },
-    { id: 'bhumitara_dps', name: '🏢 Unit Multi-Lantai Bhumitara', fillId: 'bhumitara-units-3d', opacity: 0.9, visible: true, type: 'fill-extrusion' }
+    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur (Eksisting)', fillId: 'sanur-buildings-3d', opacity: 0.25, visible: true, type: 'fill-extrusion' },
+    { id: 'bhumitara_dps', name: '🏢 Unit Multi-Lantai Bhumitara', fillId: 'bhumitara-units-3d', opacity: 0.45, visible: true, type: 'fill-extrusion' }
 ];
 
 function renderLayerControlUI() {
@@ -500,24 +502,33 @@ function toggleLayerGroup(layerId, isVisible) {
             map.setLayoutProperty(id, 'visibility', visibility);
         }
     });
+
+    if (layerId === 'bhumitara_dps') {
+        if (map.getLayer('bhumitara-units-top')) map.setLayoutProperty('bhumitara-units-top', 'visibility', visibility);
+        if (map.getLayer('bhumitara-units-wireframe')) map.setLayoutProperty('bhumitara-units-wireframe', 'visibility', visibility);
+    }
 }
-// Ditaruh di dalam tag <script> utama
+
 function filterFloorElevation(maxZ) {
     const val = parseFloat(maxZ);
     const label = document.getElementById('floor-val');
     
-    // Pastikan layer Bhumitara sudah ter-load di peta
     if (!map.getLayer('bhumitara-units-3d')) return;
 
     if (val >= 60) {
         label.innerText = "Semua Lantai";
         map.setFilter('bhumitara-units-3d', null);
+        if (map.getLayer('bhumitara-units-top')) map.setFilter('bhumitara-units-top', null);
+        if (map.getLayer('bhumitara-units-wireframe')) map.setFilter('bhumitara-units-wireframe', null);
     } else {
         label.innerText = `${val} Meter (Lantai 1-${Math.max(1, Math.round(val/3))})`;
-        // Sembunyikan unit yang Z_MIN-nya berada di atas slider
-        map.setFilter('bhumitara-units-3d', ['<', ['get', 'Z_MIN'], val]);
+        const filterCond = ['<', ['get', 'Z_MIN'], val];
+        map.setFilter('bhumitara-units-3d', filterCond);
+        if (map.getLayer('bhumitara-units-top')) map.setFilter('bhumitara-units-top', filterCond);
+        if (map.getLayer('bhumitara-units-wireframe')) map.setFilter('bhumitara-units-wireframe', filterCond);
     }
 }
+
 // 4. BUILDING HEIGHT & ID FILTERS
 let currentMinHeight = 0;
 let currentBuildingIdFilter = null;
@@ -709,7 +720,7 @@ map.on("load", () => {
         renderLayerControlUI();
     }).catch(e => console.log("SanurParcel.geojson missing"));
 
-    // B. LOAD SANUR 3D BUILDINGS DATA
+    // B. LOAD SANUR 3D BUILDINGS DATA (TRANSPARENT OUTER SHELL)
     fetch("Sanur.geojson").then(r => r.json()).then(dataSanur => {
         sanurBuildingData = dataSanur;
         dataSanur.features.forEach((feature, index) => { feature.id = index; }); 
@@ -720,89 +731,89 @@ map.on("load", () => {
                 "fill-extrusion-color": ["case", ["boolean", ["feature-state", "selected"], false], "#e74c3c", "#4a90e2"],
                 "fill-extrusion-height": ["coalesce", ["get", "tinggi_z"], ["get", "height"], 5],
                 "fill-extrusion-base": 0,
-                "fill-extrusion-opacity": 0.85
+                "fill-extrusion-opacity": 0.25
             }
         });
         renderLayerControlUI();
     }).catch(e => console.log("Sanur.geojson missing"));
 
-// C. FETCH DATA BHUMITARA_DPS (X-RAY / GLASS STYLE)
-fetch("Bhumitara_DPS.geojson")
-    .then(r => r.json())
-    .then(dataBhumitara => {
-        function stripZCoords(coords) {
-            if (typeof coords[0] === 'number') {
-                return [coords[0], coords[1]];
-            }
-            return coords.map(stripZCoords);
-        }
-
-        dataBhumitara.features.forEach((feature, index) => {
-            feature.id = index;
-
-            if (feature.properties) {
-                feature.properties.Z_MIN = Number(feature.properties.Z_MIN) || 0;
-                feature.properties.Z_MAX = Number(feature.properties.Z_MAX) || 3;
+    // C. FETCH DATA BHUMITARA_DPS (X-RAY / GLASS STYLE INNER UNITS)
+    fetch("Bhumitara_DPS.geojson")
+        .then(r => r.json())
+        .then(dataBhumitara => {
+            function stripZCoords(coords) {
+                if (typeof coords[0] === 'number') {
+                    return [coords[0], coords[1]];
+                }
+                return coords.map(stripZCoords);
             }
 
-            if (feature.geometry && feature.geometry.coordinates) {
-                feature.geometry.coordinates = stripZCoords(feature.geometry.coordinates);
-            }
-        });
+            dataBhumitara.features.forEach((feature, index) => {
+                feature.id = index;
 
-        bhumitaraData = dataBhumitara;
+                if (feature.properties) {
+                    feature.properties.Z_MIN = Number(feature.properties.Z_MIN) || 0;
+                    feature.properties.Z_MAX = Number(feature.properties.Z_MAX) || 3;
+                }
 
-        map.addSource("bhumitara-source", {
-            type: "geojson",
-            data: dataBhumitara
-        });
+                if (feature.geometry && feature.geometry.coordinates) {
+                    feature.geometry.coordinates = stripZCoords(feature.geometry.coordinates);
+                }
+            });
 
-       // 1. LAYER BODY 3D (X-RAY MAGENTA GLASS)
-map.addLayer({
-    id: "bhumitara-units-3d",
-    type: "fill-extrusion",
-    source: "bhumitara-source",
-    paint: {
-        // Efek warna Magenta/Pink transparan khas CAD 3D Cadastre
-        "fill-extrusion-color": [
-            "case",
-            ["boolean", ["feature-state", "selected"], false], "#00fff2", // Highlight Cyan terang saat diklik
-            "#e056fd"                                                  // Magenta / Orchid Violet
-        ],
-        "fill-extrusion-base": ["get", "Z_MIN"],
-        "fill-extrusion-height": ["get", "Z_MAX"],
-        // Opacity semi-transparan (0.3) agar ruangan dalam & lantai bawah terlihat jelas
-        "fill-extrusion-opacity": 0.30
-    }
+            bhumitaraData = dataBhumitara;
+
+            map.addSource("bhumitara-source", {
+                type: "geojson",
+                data: dataBhumitara
+            });
+
+            // 1. LAYER BODY 3D UNIT (TRANSPARENT MAGENTA GLASS)
+            map.addLayer({
+                id: "bhumitara-units-3d",
+                type: "fill-extrusion",
+                source: "bhumitara-source",
+                paint: {
+                    "fill-extrusion-color": [
+                        "case",
+                        ["boolean", ["feature-state", "selected"], false], "#00fff2",
+                        "#e056fd"
+                    ],
+                    "fill-extrusion-base": ["get", "Z_MIN"],
+                    "fill-extrusion-height": ["get", "Z_MAX"],
+                    "fill-extrusion-opacity": 0.45
+                }
+            });
+
+            // 2. LAYER ATAP / TOP SLAB
+            map.addLayer({
+                id: "bhumitara-units-top",
+                type: "fill-extrusion",
+                source: "bhumitara-source",
+                paint: {
+                    "fill-extrusion-color": "#7efff5",
+                    "fill-extrusion-base": ["-", ["get", "Z_MAX"], 0.15],
+                    "fill-extrusion-height": ["get", "Z_MAX"],
+                    "fill-extrusion-opacity": 0.65
+                }
+            });
+
+            // 3. LAYER WIREFRAME / SEKAT RUANG
+            map.addLayer({
+                id: "bhumitara-units-wireframe",
+                type: "line",
+                source: "bhumitara-source",
+                paint: {
+                    "line-color": "#be2edd",
+                    "line-width": 2.0,
+                    "line-opacity": 0.95
+                }
+            });
+
+            renderLayerControlUI();
+        }).catch(e => console.log("Bhumitara_DPS.geojson missing"));
 });
 
-// 2. LAYER ATAP / TOP SLAB (CYAN GLASS ROOF)
-// Meniru efek permukaan atas berwarna Cyan transparan di gambar
-map.addLayer({
-    id: "bhumitara-units-top",
-    type: "fill-extrusion",
-    source: "bhumitara-source",
-    paint: {
-        "fill-extrusion-color": "#7efff5", // Light Cyan / Kaca Es
-        // Dibuat sedikit di bawah Z_MAX agar berada tepat di plafon/atap
-        "fill-extrusion-base": ["-", ["get", "Z_MAX"], 0.15],
-        "fill-extrusion-height": ["get", "Z_MAX"],
-        "fill-extrusion-opacity": 0.65
-    }
-});
-
-// 3. LAYER WIREFRAME / OUTLINE SEKAT RUANG TEGAS
-map.addLayer({
-    id: "bhumitara-units-wireframe",
-    type: "line",
-    source: "bhumitara-source",
-    paint: {
-        "line-color": "#be2edd",        // Deep Magenta Border (Garis Tepi Kontras)
-        "line-width": 2.0,              // Ketebalan garis sekat
-        "line-opacity": 0.95
-    }
-});
-        
 // 9. ROBUST SPATIAL OVERLAP QUERY WITH DEDUPLICATION
 function analyzeBuildingsInParcel(parcelFeature) {
     if (!sanurBuildingData || !sanurBuildingData.features) return '';
@@ -895,13 +906,13 @@ function updateBuildingRightPanel() {
     }
 
     rightPanel.style.display = 'block';
-    let html = `<div style="font-weight:600; font-size:11px; color:#002B49; margin-bottom:6px;">Terpilih <b>${selectedBuildingFeatures.size}</b> Bangunan:</div>`;
+    let html = `<div style="font-weight:600; font-size:11px; color:#002B49; margin-bottom:6px;">Terpilih <b>${selectedBuildingFeatures.size}</b> Objek/Ruang:</div>`;
     html += `<div class="building-scroll-container">`;
 
     let count = 1;
     selectedBuildingFeatures.forEach((feature, bId) => {
         const props = feature.properties || {};
-        const nama = props.id || props.gmlid || `Bangunan #${count}`;
+        const nama = props.id || props.gmlid || props.NAMA_UNIT || props.OBJECTID || `Objek #${count}`;
         html += `
             <div id="bcard-${bId}" class="building-card" onclick="focusBuildingOnMap('${bId}')">
                 <div class="building-card-header">
@@ -962,17 +973,17 @@ function clearAllHighlights(buildingsOnly = false) {
     updateBuildingRightPanel();
 }
 
-// 13. IDENTIFY LOGIC WITH FLOATING RIGHT PANEL & CTRL SUPPORT
+// 13. IDENTIFY LOGIC WITH PRIORITIZED INNER UNIT ACCESS
 map.on("click", (e) => {
     if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
 
-    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
     const featuresBhumitara = map.queryRenderedFeatures(e.point, { layers: ['bhumitara-units-3d'] });
+    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
     const featuresParcels = map.queryRenderedFeatures(e.point, { layers: ['sanur-parcel-fill'] });
 
     const isCtrlPressed = e.originalEvent.ctrlKey || e.originalEvent.metaKey;
 
-    // A. CLICKED A BHUMITARA UNIT
+    // A. PRIORITY 1: CLICKED AN INTERNAL BHUMITARA UNIT
     if (featuresBhumitara.length > 0) {
         const feature = featuresBhumitara[0];
         const unitId = feature.id;
@@ -994,7 +1005,7 @@ map.on("click", (e) => {
         return;
     }
 
-    // B. CLICKED A 3D SANUR BUILDING
+    // B. PRIORITY 2: CLICKED A 3D OUTER BUILDING
     if (featuresBangunan.length > 0) {
         const feature = featuresBangunan[0];
         const buildingId = feature.id;
@@ -1018,7 +1029,7 @@ map.on("click", (e) => {
         return;
     }
 
-    // C. CLICKED A 2D PARCEL
+    // C. PRIORITY 3: CLICKED A 2D PARCEL
     if (featuresParcels.length > 0) {
         const feature = featuresParcels[0];
         const parcelId = feature.properties.NIB || feature.id;
