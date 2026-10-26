@@ -1,1093 +1,451 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="utf-8" />
-    <title>SIPN - Wilayah Bali (Sanur)</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <!-- MapLibre & Turf JS -->
-    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet">
-    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
-
-    <!-- Mapbox Draw -->
-    <script>window.mapboxgl = maplibregl;</script>
-    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
-    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css" />
-
-    <style>
-        body { margin:0; padding:0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; background: #f4f6f9; }
-
-        /* HEADER BPN STYLING */
-        #header { 
-            height: 60px; 
-            background: linear-gradient(90deg, #002B49 0%, #001F35 100%); 
-            color: white; 
-            display: flex; 
-            align-items: center; 
-            padding: 0 20px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3); 
-            z-index: 50; 
-            position: relative; 
-            border-bottom: 3px solid #E5A823;
-        }
-        #header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.8px; color: #ffffff; }
-        #header span { font-size: 13px; color: #E5A823; margin-left: 12px; font-weight: 400; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px; }
-        .header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-        .nav-link { color: #E5A823; text-decoration: none; font-weight: 600; font-size: 12px; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 4px; border: 1px solid #E5A823; transition: 0.2s; cursor: pointer; }
-        .nav-link:hover { background: #E5A823; color: #002B49; }
-
-        /* LAYOUT */
-        #map { width: 100vw; height: calc(100vh - 60px); position: relative; }
-        #sidebar { 
-            position: absolute; top: 60px; left: 0; width: 350px; height: calc(100vh - 60px); 
-            background: #ffffff; padding: 16px; z-index: 40; border-right: 1px solid #dcdfe6; 
-            box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; 
-            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
-        }
-        #sidebar h3 { margin: 0 0 6px 0; color: #002B49; border-bottom: 2px solid #E5A823; padding-bottom: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
-
-        /* FLOATING RIGHT BUILDING PANEL */
-        #right-building-panel {
-            position: absolute;
-            top: 75px;
-            right: 20px;
-            width: 310px;
-            max-height: calc(100vh - 160px);
-            background: rgba(255, 255, 255, 0.96);
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
-            z-index: 45;
-            padding: 12px;
-            display: none;
-            backdrop-filter: blur(4px);
-            border: 1px solid #cbd5e1;
-        }
-        .right-panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: bold;
-            font-size: 13px;
-            color: #002B49;
-            border-bottom: 2px solid #E5A823;
-            padding-bottom: 6px;
-            margin-bottom: 8px;
-        }
-
-        /* CURSOR MODES */
-        .mode-toolbar { display: flex; gap: 6px; background: #edf2f7; padding: 4px; border-radius: 6px; border: 1px solid #cbd5e1; }
-        .btn-mode { flex: 1; padding: 8px; font-size: 11px; font-weight: 600; border: none; background: transparent; cursor: pointer; border-radius: 4px; color: #475569; transition: 0.2s; }
-        .btn-mode.active { background: #002B49; color: #E5A823; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
-
-        /* LAYER MANAGEMENT & REORDERING */
-        .layer-list { display: flex; flex-direction: column; gap: 8px; }
-        .layer-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
-        .layer-header { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: #334155; }
-        .layer-controls { display: flex; align-items: center; gap: 4px; }
-        .btn-order { background: white; border: 1px solid #cbd5e1; border-radius: 3px; cursor: pointer; font-size: 10px; padding: 2px 5px; }
-        .btn-order:hover { background: #e2e8f0; }
-        .opacity-control { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #64748b; }
-        .opacity-control input[type="range"] { flex: 1; accent-color: #002B49; cursor: pointer; height: 4px; }
-
-        /* TABBED INFO PANEL */
-        .tab-header { display: flex; border-bottom: 2px solid #002B49; margin-bottom: 8px; background: #f1f5f9; border-radius: 4px 4px 0 0; }
-        .tab-btn { flex: 1; padding: 8px 4px; font-size: 11px; font-weight: 600; border: none; background: transparent; cursor: pointer; color: #64748b; text-align: center; }
-        .tab-btn.active { background: #002B49; color: #E5A823; }
-        .tab-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
-        /* SCROLLABLE MULTI-BUILDING PANEL & HIGHLIGHT CARD */
-        .building-scroll-container { max-height: 380px; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px; }
-        .building-card { 
-            background: #ffffff; 
-            border: 1px solid #cbd5e1; 
-            border-radius: 6px; 
-            padding: 8px; 
-            font-size: 11px; 
-            position: relative; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-        }
-        .building-card:hover { border-color: #002B49; background: #f0fdf4; }
-        .building-card.active-building { 
-            border: 2px solid #E5A823; 
-            background: #fffbeb; 
-            box-shadow: 0 0 8px rgba(229, 168, 35, 0.4); 
-        }
-        .building-card-header { font-weight: bold; color: #002B49; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
-        .btn-remove-building { background: transparent; border: none; color: #e74c3c; cursor: pointer; font-weight: bold; font-size: 12px; }
-
-        /* BUTTONS & PANELS */
-        .btn { padding: 6px 10px; background: white; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; color: #444; }
-        .btn-primary { background: #002B49; color: white; border: none; }
-        .btn-danger { background: #e74c3c; color: white; border: none; }
-        .btn-secondary { background: #64748b; color: white; border: none; }
-        .draw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
-        .btn-tool { text-align: center; padding: 6px; border: 1px solid #002B49; color: #002B49; background: #f4f8fb; }
-
-        #info-panel, #measure-result { background: white; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; min-height: 80px; }
-        .info-placeholder { color: #94a3b8; font-style: italic; text-align: center; margin: 15px 0; font-size: 12px; }
-        .info-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        .info-table td { padding: 4px 0; border-bottom: 1px solid #f1f5f9; word-break: break-all; }
-        .info-table td:first-child { font-weight: 600; color: #002B49; width: 40%; }
-
-        /* BASEMAP CONTROL */
-        #basemap-control { position: absolute; bottom: 25px; right: 15px; z-index: 50; background: white; padding: 4px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: flex; gap: 4px; }
-        .btn-map { padding: 5px 10px; border: 1px solid #cbd5e1; background: white; cursor: pointer; border-radius: 4px; font-size: 11px; font-weight: 600; color: #475569; }
-        .btn-map.active { background: #002B49; color: #E5A823; border-color: #002B49; }
-
-        /* MODAL POPUP STYLING */
-        #helpModal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.6);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(3px);
-        }
-        .modal-content {
-            background: white;
-            width: 90%;
-            max-width: 650px;
-            max-height: 85vh;
-            border-radius: 8px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-            overflow-y: auto;
-            padding: 20px;
-            font-size: 12px;
-            color: #334155;
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #E5A823;
-            padding-bottom: 8px;
-            margin-bottom: 12px;
-        }
-        .modal-header h2 { margin: 0; color: #002B49; font-size: 16px; }
-        .btn-close-modal { background: none; border: none; font-size: 18px; cursor: pointer; color: #94a3b8; }
-        .btn-close-modal:hover { color: #e74c3c; }
-
-        .meta-table { width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 14px; }
-        .meta-table th, .meta-table td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; font-size: 11px; }
-        .meta-table th { background: #f1f5f9; color: #002B49; }
-    </style>
+<meta charset="utf-8">
+<title>SIPN – Geoweb 3D Sanur</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+<script>window.mapboxgl = maplibregl;</script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css">
+<style>
+:root{--p:rgba(10,26,42,.92);--l:rgba(255,255,255,.1);--t:#e8eef5;--m:#8ea3b8;--g:#f2b441;--c:#22d3ee;--r:#ef4444;--ok:#34d399;--in:rgba(255,255,255,.06)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:13px/1.45 Inter,system-ui,'Segoe UI',sans-serif;color:var(--t);background:#0a1a2a;overflow:hidden}
+#map{position:absolute;inset:0}
+.glass{background:var(--p);backdrop-filter:blur(14px);border:1px solid var(--l);border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.4)}
+button{font:inherit;color:inherit;cursor:pointer}
+header{position:absolute;top:12px;left:12px;right:12px;height:50px;z-index:50;display:flex;align-items:center;gap:14px;padding:0 14px}
+.logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--g),#c9871a);color:#0a1a2a;font-weight:800;display:grid;place-items:center;font-size:14px}
+header h1{margin:0;font-size:15px;letter-spacing:.3px}
+header small{color:var(--m);display:block;font-size:11px;margin-top:-2px}
+.sp{margin-left:auto}
+.seg{display:flex;background:var(--in);border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:7px;font-weight:600;font-size:12px;color:var(--m)}
+.seg button.on{background:var(--g);color:#0a1a2a}
+.ghost{border:1px solid var(--l);background:var(--in);padding:7px 12px;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none;color:var(--t)}
+.ghost:hover{border-color:var(--g);color:var(--g)}
+#side{position:absolute;top:74px;left:12px;bottom:12px;width:352px;z-index:40;display:flex;flex-direction:column;overflow:hidden;transition:transform .25s}
+#side.hide{transform:translateX(-370px)}
+#tog{position:absolute;top:84px;left:374px;z-index:41;width:28px;height:28px;border-radius:8px;border:1px solid var(--l);background:var(--p);transition:left .25s}
+#side.hide+#tog{left:12px}
+.tabs{display:flex;padding:8px;gap:4px;border-bottom:1px solid var(--l)}
+.tabs button{flex:1;border:0;background:none;padding:8px 2px;border-radius:8px;font-size:12px;font-weight:600;color:var(--m)}
+.tabs button.on{background:var(--in);color:var(--g)}
+.pane{display:none;padding:14px;overflow-y:auto;flex:1;flex-direction:column;gap:14px}
+.pane.on{display:flex}
+h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--m);font-weight:600}
+.row{display:flex;gap:6px;align-items:center}
+input[type=text],input[type=number]{flex:1;min-width:0;background:var(--in);border:1px solid var(--l);border-radius:9px;color:var(--t);padding:9px 11px;font:inherit;outline:0}
+input:focus{border-color:var(--g)}
+.btn{border:0;background:var(--g);color:#0a1a2a;font-weight:700;border-radius:9px;padding:9px 14px;font-size:12px}
+.btn.s{background:var(--in);color:var(--t);border:1px solid var(--l);font-weight:600}
+.btn.d{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.4)}
+input[type=range]{width:100%;accent-color:var(--g);margin:6px 0 0}
+.box{background:var(--in);border:1px solid var(--l);border-radius:11px;padding:11px}
+.lbl{display:flex;justify-content:space-between;font-size:12px;font-weight:600}
+.lbl b{color:var(--g)}
+.hint{font-size:11px;color:var(--m);margin-top:5px}
+.msg{font-size:11px;margin-top:5px;color:var(--c)}
+.ph{color:var(--m);text-align:center;padding:26px 10px;border:1px dashed var(--l);border-radius:11px}
+.nib small{color:var(--m);font-size:11px}
+.nib b{display:block;font-size:22px;color:var(--c);letter-spacing:.5px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
+.stat{background:var(--in);border-radius:10px;padding:9px 6px;text-align:center}
+.stat b{display:block;font-size:17px}
+.stat span{font-size:10px;color:var(--m)}
+.verdict{padding:10px 12px;border-radius:10px;font-weight:600;font-size:12px;margin-bottom:10px}
+.verdict.ok{background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.45);color:var(--ok)}
+.verdict.bad{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.5);color:#fca5a5}
+.verdict.na{background:var(--in);color:var(--m)}
+.bar{margin-top:7px}
+.bar div{display:flex;justify-content:space-between;font-size:11px}
+.bar i{display:block;height:6px;border-radius:4px;background:var(--in);margin-top:3px;position:relative;overflow:hidden}
+.bar i u{position:absolute;inset:0 auto 0 0;background:#5b9bd5;border-radius:4px}
+.bar i u.o{background:var(--r)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+td{padding:4px 6px;border-bottom:1px solid var(--l);vertical-align:top;word-break:break-word}
+td:first-child{color:var(--m);width:42%}
+details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
+.lay{background:var(--in);border:1px solid var(--l);border-radius:11px;padding:10px}
+.lay .top{display:flex;align-items:center;gap:8px;font-weight:600;font-size:12px}
+.lay .top span{flex:1}
+.ar{border:1px solid var(--l);background:none;border-radius:6px;width:24px;height:24px;font-size:11px}
+.ar:disabled{opacity:.3}
+.sw{position:relative;width:34px;height:19px;flex:none}
+.sw input{display:none}
+.sw i{position:absolute;inset:0;background:#33465a;border-radius:20px;transition:.2s}
+.sw i:after{content:"";position:absolute;width:15px;height:15px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+.sw input:checked+i{background:var(--g)}
+.sw input:checked+i:after{transform:translateX(15px)}
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#rp{position:absolute;top:74px;right:12px;width:320px;max-height:calc(100% - 170px);z-index:45;display:none;flex-direction:column;overflow:hidden}
+#rp.on{display:flex}
+#rp .hd{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid var(--l);font-weight:700;font-size:13px}
+#rp .bd{padding:10px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.bc{background:var(--in);border:1px solid var(--l);border-radius:11px;padding:10px;cursor:pointer}
+.bc:hover{border-color:var(--g)}
+.bc .t{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:12px;margin-bottom:6px;gap:6px}
+.bdg{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(91,155,213,.25);color:#9cc7ee;white-space:nowrap}
+.bdg.o{background:rgba(239,68,68,.25);color:#fca5a5}
+.x{border:0;background:none;color:var(--m);font-size:14px}
+#dock{position:absolute;right:56px;bottom:12px;z-index:40;display:flex;gap:8px;align-items:flex-end}
+.leg{padding:9px 12px;font-size:11px;display:flex;flex-direction:column;gap:4px}
+.leg span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:var(--k)}
+#dock .seg{background:var(--p);border:1px solid var(--l)}
+.maplibregl-ctrl-bottom-right{margin-bottom:4px}
+#loader,#help{position:absolute;inset:0;z-index:99;display:grid;place-items:center;background:rgba(5,12,20,.7);backdrop-filter:blur(4px)}
+#help{display:none}
+#help .glass{width:min(620px,92vw);max-height:84vh;overflow:auto;padding:20px}
+#toast{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);z-index:90;display:flex;flex-direction:column;gap:6px}
+#toast div{background:#7f1d1d;border:1px solid var(--r);padding:8px 14px;border-radius:9px;font-size:12px}
+@media(max-width:700px){#side{width:calc(100vw - 24px)}#tog{display:none}#rp{width:calc(100vw - 24px);top:auto;bottom:12px;max-height:40%}#dock{display:none}header small{display:none}}
+</style>
 </head>
-
 <body>
-
-<div id="header">
-    <h1>SIPN</h1>
-    <span>Sistem Informasi Pertanahan Nasional — Wilayah Bali (Sanur)</span>
-    <div class="header-actions">
-        <button class="nav-link" onclick="toggleHelpModal(true)">📖 Petunjuk & Metadata</button>
-        <a href="index.html" class="nav-link">🏛️ Ke Peta Kotabaru</a>
-    </div>
-</div>
-
-<div id="sidebar">
-    <!-- CURSOR MODE CONTROL -->
-    <div>
-        <h3>Mode Navigasi Peta</h3>
-        <div class="mode-toolbar">
-            <button id="btn-mode-pan" class="btn-mode active" onclick="setPointerMode('pan')">🖐️ Pan / Hold</button>
-            <button id="btn-mode-point" class="btn-mode" onclick="setPointerMode('point')">🎯 Point / Identify</button>
-        </div>
-        <div style="font-size:10px; color:#64748b; margin-top:4px;">
-            💡 <i>Tips: Gunakan <b>WASD / Panah</b> untuk geser peta, <b>Q/E</b> rotasi, <b>R/F</b> tilt 3D, dan <b>CTRL+Klik</b> pilih multi bangunan.</i>
-        </div>
-    </div>
-
-    <!-- SLIDER LANTAI -->
-    <div style="margin-top: 5px; padding-top: 5px; border-top: 1px solid #cbd5e1;">
-        <h3>Filter Floor Slicing (3D)</h3>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-            <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
-                <span>Tampilkan S/D Ketinggian:</span>
-                <span id="floor-val" style="color:#002B49; font-size:12px; font-weight:bold;">Semua Lantai</span>
-            </div>
-            <input type="range" id="floorSlider" min="0" max="60" step="3" value="60" style="width:100%; cursor:pointer;" oninput="filterFloorElevation(this.value)">
-        </div>
-    </div>
-
-    <!-- PENCARIAN NIB SANUR -->
-    <div>
-        <h3>Pencarian NIB Sanur (2D)</h3>
-        <div style="display:flex; gap:5px;">
-            <input id="searchBoxSanur" type="text" placeholder="Contoh NIB: 04070" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px;">
-            <button class="btn btn-primary" onclick="searchNIBPanur()">Cari</button>
-        </div>
-    </div>
-
-    <!-- PENCARIAN & FILTER ID BANGUNAN 3D -->
-    <div>
-        <h3>Pencarian & Filter ID Bangunan (3D)</h3>
-        <div style="display:flex; gap:5px;">
-            <input id="searchBoxBuilding" type="text" placeholder="Masukkan ID / gmlid" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px;">
-            <button class="btn btn-primary" onclick="filterBuildingById()">Cari</button>
-            <button class="btn btn-secondary" onclick="resetBuildingFilter()">Reset</button>
-        </div>
-        <div id="building-search-msg" style="font-size:10px; color:#0369a1; margin-top:4px;"></div>
-    </div>
-
-    <!-- FILTER TINGGI BANGUNAN -->
-    <div>
-        <h3>Filter Tinggi Bangunan</h3>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-            <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:600; color:#334155; margin-bottom:6px;">
-                <span>Minimal Tinggi:</span>
-                <span id="height-val" style="color:#002B49; font-size:12px; font-weight:bold;">0 m</span>
-            </div>
-            <input type="range" id="heightSlider" min="0" max="50" step="1" value="0" style="width:100%; accent-color:#002B49; cursor:pointer;" oninput="filterBuildingHeight(this.value)">
-            <div style="display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; margin-top:2px;">
-                <span>0m</span>
-                <span>25m</span>
-                <span>50m+</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- LAYER MANAGEMENT & REORDERING -->
-    <div>
-        <h3>Manajemen Layer & Urutan</h3>
-        <div id="layer-list" class="layer-list"></div>
-    </div>
-
-    <!-- TABBED INFO PANEL -->
-    <div>
-        <h3>Informasi Objek Terpilih</h3>
-        <div class="tab-header">
-            <button id="tab-btn-bidang" class="tab-btn active" onclick="switchTab('bidang')" disabled>Bidang Tanah</button>
-        </div>
-        <div id="info-panel">
-            <div id="tab-content-bidang" class="tab-content active">
-                <div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- TOOLS DRAWING -->
-    <div>
-        <h3>Pengukuran & Penggambaran</h3>
-        <div class="draw-grid">
-            <button class="btn btn-tool" onclick="startDraw('draw_point')">📍 Titik</button>
-            <button class="btn btn-tool" onclick="startDraw('draw_line_string')">📏 Garis</button>
-            <button class="btn btn-tool" onclick="startDraw('draw_polygon')">⬠ Poligon</button>
-            <button class="btn btn-tool" onclick="deleteSelected()" style="color:#e74c3c; border-color:#e74c3c;">🗑️ Hapus</button>
-        </div>
-        <div id="measure-result">
-            <div class="info-placeholder">Hasil ukur akan tampil di sini.</div>
-        </div>
-        <div style="text-align:right;">
-            <button class="btn btn-danger" onclick="downloadDrawings()">💾 Simpan GeoJSON</button>
-        </div>
-    </div>
-</div>
-
-<!-- FLOATING RIGHT BUILDING INFORMATION PANEL -->
-<div id="right-building-panel">
-    <div class="right-panel-header">
-        <span>🏢 Informasi Objek 3D / Ruang</span>
-        <button class="btn-remove-building" onclick="clearAllHighlights(true)">✖ Close</button>
-    </div>
-    <div id="right-building-content"></div>
-</div>
-
-<!-- BASEMAP SWITCHER -->
-<div id="basemap-control">
-    <button class="btn-map active" onclick="setBasemap('osm', this)">OSM</button>
-    <button class="btn-map" onclick="setBasemap('esri', this)">Satelit</button>
-</div>
-
-<!-- TUTORIAL & METADATA MODAL -->
-<div id="helpModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>📖 Panduan Penggunaan & Metadata Sistem</h2>
-            <button class="btn-close-modal" onclick="toggleHelpModal(false)">✖</button>
-        </div>
-
-        <h3 style="color:#002B49; margin-top:0;">🌐 Metadata Spesifikasi Data & CRS</h3>
-        <table class="meta-table">
-            <tr>
-                <th>Komponen</th>
-                <th>Spesifikasi Data</th>
-            </tr>
-            <tr>
-                <td><b>Sistem Koordinat (CRS)</b></td>
-                <td><b>EPSG:4326 (WGS 84 - Geographic)</b></td>
-            </tr>
-            <tr>
-                <td><b>Data Bidang Tanah (2D)</b></td>
-                <td>`SanurParcel.geojson` (NIB, Tipe Hak, Luas Tertulis, Penggunaan)</td>
-            </tr>
-            <tr>
-                <td><b>Data Bangunan 3D</b></td>
-                <td>`Sanur.geojson` (Extrusion Heights: `tinggi_z`, `height`)</td>
-            </tr>
-            <tr>
-                <td><b>Data Unit Multi-Lantai</b></td>
-                <td>`Bhumitara_DPS.geojson` (Z_MIN, Z_MAX)</td>
-            </tr>
-            <tr>
-                <td><b>Mesin Rendering Engine</b></td>
-                <td>MapLibre GL JS + GPU Fill-Extrusion Vector Engine</td>
-            </tr>
-        </table>
-
-        <h3 style="color:#002B49;">🎮 Panduan Navigasi & Operasi</h3>
-        <ul style="padding-left: 18px; line-height: 1.6;">
-            <li><b>Navigasi Keyboard:</b>
-                <ul>
-                    <li><b>W / S / A / D</b> atau <b>Panah</b>: Geser peta.</li>
-                    <li><b>Q / E</b>: Rotasi peta.</li>
-                    <li><b>R / F</b>: Atur Kemiringan 3D (Tilt Pitch 0°–85°).</li>
-                </ul>
-            </li>
-            <li><b>Pencarian & Filter Bangunan:</b> Cari ID / gmlid bangunan pada panel kiri untuk menyorot unit spesifik atau memfilter geometri kembar.</li>
-            <li><b>Identifikasi Objek:</b> Aktifkan mode 🎯 <b>Point / Identify</b> pada sidebar kiri, lalu klik bidang tanah atau bangunan 3D di peta.</li>
-            <li><b>Multi-Pilih Bangunan 3D:</b> Tahan tombol <b>CTRL</b> pada keyboard sambil mengklik beberapa bangunan 3D.</li>
-            <li><b>Interaksi Kartu Bangunan:</b> Klik kartu bangunan pada panel melayang kanan untuk <i>flyTo</i> ke lokasi bangunan.</li>
-        </ul>
-
-        <div style="text-align: right; margin-top: 15px;">
-            <button class="btn btn-primary" onclick="toggleHelpModal(false)" style="padding: 8px 16px;">Tutup Panduan</button>
-        </div>
-    </div>
-</div>
-
 <div id="map"></div>
 
+<header class="glass">
+  <div class="logo">S</div>
+  <div><h1>SIPN Geoweb 3D</h1><small>Integrasi NIB × Bangunan 3D · Sanur, Bali</small></div>
+  <div class="seg sp"><button id="m-pan" class="on">✋ Geser</button><button id="m-pt">🎯 Identifikasi</button></div>
+  <button class="ghost" onclick="$('help').style.display='grid'">Petunjuk</button>
+  <a class="ghost" href="index.html">Peta Kotabaru</a>
+</header>
+
+<aside id="side" class="glass">
+  <div class="tabs">
+    <button data-t="a" class="on">📍 Cek NIB</button>
+    <button data-t="b">🏢 3D</button>
+    <button data-t="c">🗂 Layer</button>
+    <button data-t="d">📏 Ukur</button>
+  </div>
+
+  <div class="pane on" id="pane-a">
+    <div>
+      <h3>Cari NIB</h3>
+      <div class="row"><input id="q-nib" type="text" placeholder="Contoh: 04070"><button class="btn" id="b-nib">Cari</button></div>
+      <div class="hint">Atau aktifkan <b>Identifikasi</b> lalu klik bidang di peta.</div>
+    </div>
+    <div class="box">
+      <div class="lbl"><span>Batas ketinggian bangunan</span><b><span id="lim-v">15</span> m</b></div>
+      <input type="range" id="lim" min="3" max="60" step="1" value="15">
+      <div class="hint">Default 15 m (acuan umum Bali). Bangunan/lantai di atas batas diwarnai <b style="color:#fca5a5">merah</b>.</div>
+    </div>
+    <div id="parcel-out"><div class="ph">Pilih bidang tanah untuk melihat<br>analisis ketinggian bangunan di atasnya.</div></div>
+  </div>
+
+  <div class="pane" id="pane-b">
+    <div>
+      <h3>Cari ID Bangunan</h3>
+      <div class="row"><input id="q-b" type="text" placeholder="ID / gmlid"><button class="btn" id="b-bid">Cari</button><button class="btn s" id="b-rst">Reset</button></div>
+      <div class="msg" id="b-msg"></div>
+    </div>
+    <div class="box">
+      <div class="lbl"><span>Tinggi minimal bangunan</span><b id="hmin-v">0 m</b></div>
+      <input type="range" id="hmin" min="0" max="50" step="1" value="0">
+    </div>
+    <div class="box">
+      <div class="lbl"><span>Irisan lantai Bhumitara</span><b id="cut-v">Semua lantai</b></div>
+      <input type="range" id="cut" min="0" max="60" step="1" value="60">
+      <div class="hint">Geser untuk memotong gedung per lantai (asumsi 3 m/lantai).</div>
+    </div>
+    <div class="box">
+      <div class="lbl"><span>Koreksi dasar Z Bhumitara</span><b id="zo-v">–</b></div>
+      <input type="range" id="zo" min="-30" max="30" step="0.5" value="0">
+      <div class="row" style="margin-top:8px"><button class="btn s" id="b-auto" style="flex:1">Auto (rapatkan ke tanah)</button></div>
+      <div class="hint" id="zo-h">Jika gedung masih melayang / tenggelam, atur slider ini.</div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-c">
+    <div><h3>Layer &amp; urutan</h3><div id="layers" style="display:flex;flex-direction:column;gap:8px"></div></div>
+  </div>
+
+  <div class="pane" id="pane-d">
+    <div>
+      <h3>Gambar &amp; ukur</h3>
+      <div class="dg">
+        <button class="btn s" onclick="draw.changeMode('draw_point')">📍 Titik</button>
+        <button class="btn s" onclick="draw.changeMode('draw_line_string')">📏 Garis</button>
+        <button class="btn s" onclick="draw.changeMode('draw_polygon')">⬠ Poligon</button>
+        <button class="btn d" onclick="draw.trash();measure()">🗑 Hapus</button>
+      </div>
+    </div>
+    <div id="measure"><div class="ph">Hasil ukur tampil di sini.</div></div>
+    <button class="btn" onclick="saveDraw()">💾 Simpan GeoJSON</button>
+  </div>
+</aside>
+<button id="tog" onclick="$('side').classList.toggle('hide')">⇆</button>
+
+<div id="rp" class="glass">
+  <div class="hd"><span>🏢 Bangunan terpilih</span><button class="x" onclick="clearSel(false)">✕</button></div>
+  <div class="bd" id="rp-c"></div>
+</div>
+
+<div id="dock">
+  <div class="glass leg">
+    <span style="--k:#5b9bd5">≤ batas tinggi</span>
+    <span style="--k:#ef4444">&gt; batas tinggi</span>
+    <span style="--k:#22d3ee">Lantai Bhumitara</span>
+    <span style="--k:#fbbf24">Terpilih</span>
+  </div>
+  <div class="seg" id="bm"><button class="on" data-b="osm">Peta</button><button data-b="esri">Satelit</button><button data-b="dark">Gelap</button></div>
+</div>
+
+<div id="loader"><div class="glass" style="padding:18px 26px">Memuat data spasial…</div></div>
+<div id="toast"></div>
+
+<div id="help" onclick="if(event.target===this)this.style.display='none'">
+  <div class="glass">
+    <h2 style="margin:0 0 10px">Petunjuk &amp; Metadata</h2>
+    <table>
+      <tr><td>CRS</td><td>EPSG:4326 (WGS 84)</td></tr>
+      <tr><td>Bidang tanah</td><td>SanurParcel.geojson (properti NIB)</td></tr>
+      <tr><td>Bangunan 3D</td><td>Sanur.geojson (tinggi_z / height)</td></tr>
+      <tr><td>Unit per lantai</td><td>Bhumitara_DPS.geojson (Z_MIN, Z_MAX)</td></tr>
+      <tr><td>Engine</td><td>MapLibre GL JS · fill-extrusion</td></tr>
+    </table>
+    <ul style="line-height:1.7;padding-left:18px">
+      <li><b>W/A/S/D</b> atau panah: geser · <b>Q/E</b>: rotasi · <b>R/F</b>: tilt</li>
+      <li>Mode <b>Identifikasi</b>: klik bidang / bangunan. <b>Ctrl+klik</b> untuk multi-pilih.</li>
+      <li>Tab <b>Cek NIB</b>: cari NIB, atur batas tinggi, lihat bangunan yang melampaui batas.</li>
+      <li>Klik kartu bangunan di panel kanan untuk terbang ke lokasinya.</li>
+    </ul>
+    <button class="btn" onclick="$('help').style.display='none'">Tutup</button>
+  </div>
+</div>
+
 <script>
-// 1. INITIALIZE MAP
-const map = new maplibregl.Map({
-    container: "map",
-    center: [115.2625, -8.6881],
-    zoom: 16,
-    pitch: 50,
-    bearing: -15,
-    style: {
-        version: 8,
-        sources: { basemap: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256 } },
-        layers: [{ id: "basemap-layer", type: "raster", source: "basemap" }]
-    }
-});
-map.addControl(new maplibregl.NavigationControl(), 'top-right');
+const $=id=>document.getElementById(id);
+const n=(x,d=1)=>Number.isFinite(+x)&&x!==null&&x!==''?(+x).toFixed(d).replace(/\.0+$/,''):'–';
+const toast=m=>{const d=document.createElement('div');d.textContent=m;$('toast').appendChild(d);setTimeout(()=>d.remove(),5000)};
+const BM={osm:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',esri:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',dark:'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'};
+const SRC={sanur:'sanur-src',bhu:'bhu-src'};
+let LIMIT=15,mode='pan',pSel=null,lastParcel=null,minH=0,idF=null,cut=60,zMax=60,zMin=0,zOff=0;
+let pData,sData,bData;const pIdx=new Map(),sel=new Map(),bbc=new WeakMap();
 
-// MODAL TOGGLE FUNCTION
-function toggleHelpModal(show) {
-    document.getElementById('helpModal').style.display = show ? 'flex' : 'none';
-}
+const map=new maplibregl.Map({container:'map',center:[115.2625,-8.6881],zoom:16,pitch:58,bearing:-15,maxPitch:80,
+ style:{version:8,sources:{basemap:{type:'raster',tiles:[BM.osm],tileSize:256,attribution:'© OpenStreetMap · Esri · CARTO'}},
+ layers:[{id:'basemap',type:'raster',source:'basemap'}],light:{anchor:'viewport',position:[1.5,210,50],intensity:.55}}});
+map.addControl(new maplibregl.NavigationControl(),'bottom-right');
+map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-left');
 
-// 2. KEYBOARD NAVIGATION
-window.addEventListener('keydown', (e) => {
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+/* ---------- expressions ---------- */
+const H=['coalesce',['get','tinggi_z'],['get','height'],5];
+const SEL=['boolean',['feature-state','selected'],false];
+const sanurColor=()=>['case',SEL,'#fbbf24',['>',H,LIMIT],'#ef4444','#5b9bd5'];
+const bhuColor=()=>['case',SEL,'#fbbf24',['>=',['get','zb'],LIMIT],'#ef4444',['interpolate',['linear'],['get','zb'],0,'#22d3ee',6,'#60a5fa',12,'#a78bfa',24,'#f0abfc']];
+const hOf=p=>+(p.tinggi_z??p.height??0);
 
-    const panStep = 80;
-    const rotateStep = 10;
-    const pitchStep = 5;
+/* ---------- tabs, mode, basemap ---------- */
+function tab(t){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='pane-'+t))}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
+function setMode(m){mode=m;$('m-pan').classList.toggle('on',m==='pan');$('m-pt').classList.toggle('on',m==='point');map.getCanvas().style.cursor=m==='pan'?'grab':'crosshair'}
+$('m-pan').onclick=()=>setMode('pan');$('m-pt').onclick=()=>setMode('point');
+document.querySelectorAll('#bm button').forEach(b=>b.onclick=()=>{map.getSource('basemap').setTiles([BM[b.dataset.b]]);document.querySelectorAll('#bm button').forEach(x=>x.classList.toggle('on',x===b))});
 
-    switch (e.key.toLowerCase()) {
-        case 'w':
-        case 'arrowup':
-            map.panBy([0, -panStep], { duration: 100 });
-            break;
-        case 's':
-        case 'arrowdown':
-            map.panBy([0, panStep], { duration: 100 });
-            break;
-        case 'a':
-        case 'arrowleft':
-            map.panBy([-panStep, 0], { duration: 100 });
-            break;
-        case 'd':
-        case 'arrowright':
-            map.panBy([panStep, 0], { duration: 100 });
-            break;
-        case 'q':
-            map.easeTo({ bearing: map.getBearing() - rotateStep, duration: 100 });
-            break;
-        case 'e':
-            map.easeTo({ bearing: map.getBearing() + rotateStep, duration: 100 });
-            break;
-        case 'r':
-            map.easeTo({ pitch: Math.min(map.getPitch() + pitchStep, 85), duration: 100 });
-            break;
-        case 'f':
-            map.easeTo({ pitch: Math.max(map.getPitch() - pitchStep, 0), duration: 100 });
-            break;
-    }
+window.addEventListener('keydown',e=>{
+ if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;
+ const k=e.key.toLowerCase(),d={duration:120};
+ if(['w','arrowup'].includes(k))map.panBy([0,-80],d);
+ else if(['s','arrowdown'].includes(k))map.panBy([0,80],d);
+ else if(['a','arrowleft'].includes(k))map.panBy([-80,0],d);
+ else if(['d','arrowright'].includes(k))map.panBy([80,0],d);
+ else if(k==='q')map.easeTo({bearing:map.getBearing()-10,...d});
+ else if(k==='e')map.easeTo({bearing:map.getBearing()+10,...d});
+ else if(k==='r')map.easeTo({pitch:Math.min(map.getPitch()+5,85),...d});
+ else if(k==='f')map.easeTo({pitch:Math.max(map.getPitch()-5,0),...d});
 });
 
-// 3. LAYER REGISTRATION & DYNAMIC UI
-let layerStack = [
-    { id: 'bidang_sanur', name: '🔴 Bidang Tanah Sanur', fillId: 'sanur-parcel-fill', outlineId: 'sanur-parcel-outline', highlightId: 'sanur-parcel-highlight', opacity: 0.3, visible: true, type: 'fill' },
-    { id: 'bangunan_sanur', name: '🏖️ Bangunan 3D Sanur (Eksisting)', fillId: 'sanur-buildings-3d', opacity: 0.25, visible: true, type: 'fill-extrusion' },
-    { id: 'bhumitara_dps', name: '🏢 Unit Multi-Lantai Bhumitara', fillId: 'bhumitara-units-3d', opacity: 0.45, visible: true, type: 'fill-extrusion' }
-];
+/* ---------- layer manager ---------- */
+const stack=[
+ {k:'parcel',n:'Bidang Tanah (NIB)',ids:['parcel-fill','parcel-line','parcel-hl'],main:'parcel-fill',prop:'fill-opacity',op:.25,vis:true},
+ {k:'sanur',n:'Bangunan 3D Sanur',ids:['sanur-3d'],main:'sanur-3d',prop:'fill-extrusion-opacity',op:.9,vis:true},
+ {k:'bhu',n:'Bhumitara per Lantai',ids:['bhu-3d','bhu-line'],main:'bhu-3d',prop:'fill-extrusion-opacity',op:.8,vis:true}];
+function renderLayers(){
+ const c=$('layers');c.innerHTML='';
+ [...stack].reverse().forEach((s,i)=>{const ix=stack.length-1-i,d=document.createElement('div');d.className='lay';
+  d.innerHTML=`<div class="top"><label class="sw"><input type="checkbox" ${s.vis?'checked':''}><i></i></label><span>${s.n}</span>
+  <button class="ar" ${ix===stack.length-1?'disabled':''}>▲</button><button class="ar" ${ix===0?'disabled':''}>▼</button></div>
+  <div class="lbl" style="margin-top:8px;font-weight:400;color:var(--m)"><span>Opasitas</span><span>${Math.round(s.op*100)}%</span></div>
+  <input type="range" min="0" max="1" step=".05" value="${s.op}">`;
+  const [chk,up,dn,rg]=[d.querySelector('input[type=checkbox]'),...d.querySelectorAll('.ar'),d.querySelector('input[type=range]')];
+  chk.onchange=()=>{s.vis=chk.checked;s.ids.forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',s.vis?'visible':'none'))};
+  up.onclick=()=>mv(ix,1);dn.onclick=()=>mv(ix,-1);
+  rg.oninput=()=>{s.op=+rg.value;if(map.getLayer(s.main))map.setPaintProperty(s.main,s.prop,s.op);rg.previousElementSibling.lastElementChild.textContent=Math.round(s.op*100)+'%'};
+  c.appendChild(d)})}
+function mv(i,dir){const j=i+dir;[stack[i],stack[j]]=[stack[j],stack[i]];reorder();renderLayers()}
+function reorder(){stack.forEach(s=>s.ids.forEach(id=>map.getLayer(id)&&map.moveLayer(id)))}
 
-function renderLayerControlUI() {
-    const container = document.getElementById('layer-list');
-    if (!container) return;
-    container.innerHTML = '';
+/* ---------- limit & filters ---------- */
+function setLimit(v){LIMIT=+v;$('lim-v').textContent=LIMIT;
+ if(map.getLayer('sanur-3d'))map.setPaintProperty('sanur-3d','fill-extrusion-color',sanurColor());
+ if(map.getLayer('bhu-3d'))map.setPaintProperty('bhu-3d','fill-extrusion-color',bhuColor());
+ renderSel();if(lastParcel)$('parcel-out').innerHTML=parcelHTML(lastParcel)}
+$('lim').oninput=e=>setLimit(e.target.value);
 
-    [...layerStack].reverse().forEach((item, index) => {
-        const actualIndex = layerStack.length - 1 - index;
-        const card = document.createElement('div');
-        card.className = 'layer-card';
-        card.innerHTML = `
-            <div class="layer-header">
-                <label style="cursor:pointer;">
-                    <input type="checkbox" id="chk-${item.id}" ${item.visible ? 'checked' : ''} onchange="toggleLayerGroup('${item.id}', this.checked)">
-                    ${item.name}
-                </label>
-                <div class="layer-controls">
-                    <button class="btn-order" onclick="moveLayerStack(${actualIndex}, 1)" ${actualIndex === layerStack.length - 1 ? 'disabled' : ''}>⬆️</button>
-                    <button class="btn-order" onclick="moveLayerStack(${actualIndex}, -1)" ${actualIndex === 0 ? 'disabled' : ''}>⬇️</button>
-                </div>
-            </div>
-            <div class="opacity-control">
-                <span>Transparansi:</span>
-                <input type="range" min="0" max="1" step="0.05" value="${item.opacity}" oninput="setLayerOpacity('${item.id}', this.value)">
-                <span>${Math.round(item.opacity * 100)}%</span>
-            </div>
-        `;
-        container.appendChild(card);
-    });
-}
+function applyF(){
+ if(!map.getLayer('sanur-3d'))return;
+ const hc=['>=',H,minH];
+ map.setFilter('sanur-3d',idF?['all',hc,['any',['==',['to-string',['coalesce',['get','id'],'']],idF],['==',['to-string',['coalesce',['get','gmlid'],'']],idF]]]:hc)}
+$('hmin').oninput=e=>{minH=+e.target.value;$('hmin-v').textContent=minH+' m';applyF()};
+function findB(){
+ const v=$('q-b').value.trim(),m=$('b-msg');if(!v){resetB();return}
+ if(!sData)return;
+ const hits=sData.features.filter(f=>String(f.properties.id)===v||String(f.properties.gmlid)===v);
+ if(!hits.length){m.style.color='#fca5a5';m.textContent=`ID "${v}" tidak ditemukan`;return}
+ idF=v;applyF();m.style.color='var(--c)';m.textContent=`${hits.length} bagian poligon ditemukan`;
+ map.fitBounds(turf.bbox(turf.featureCollection(hits)),{padding:120,maxZoom:19});
+ clearSel(true);hits.forEach(f=>{setS('sanur',f.id,true);sel.set('sanur-'+f.id,{kind:'sanur',id:f.id,p:f.properties,geom:f.geometry})});renderSel()}
+function resetB(){$('q-b').value='';$('b-msg').textContent='';idF=null;applyF()}
+$('b-bid').onclick=findB;$('b-rst').onclick=resetB;$('q-b').onkeypress=e=>e.key==='Enter'&&findB();
 
-function moveLayerStack(index, direction) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= layerStack.length) return;
+/* ---------- Bhumitara Z handling (fix floating) ---------- */
+function applyZ(off){
+ zOff=off;let mx=0;
+ bData.features.forEach(f=>{const p=f.properties;p.zb=p._a-off;p.zt=p._b-off;mx=Math.max(mx,p.zt)});
+ zMax=Math.max(3,Math.ceil(mx));$('cut').max=zMax;$('zo').value=off;
+ $('zo-v').textContent=n(off)+' m';
+ $('zo-h').textContent=`Z-min data = ${n(zMin)} m. Nilai dikurangi ${n(off)} m agar lantai terbawah menapak tanah.`;
+ const s=map.getSource('bhu-src');if(s)s.setData(bData);
+ setCut(zMax)}
+function setCut(v){
+ cut=+v;$('cut').value=cut;const all=cut>=zMax;
+ $('cut-v').textContent=all?'Semua lantai':`≤ ${cut} m · lantai ${Math.ceil(cut/3)}`;
+ if(!map.getLayer('bhu-3d'))return;
+ map.setFilter('bhu-3d',all?null:['<',['get','zb'],cut]);
+ map.setPaintProperty('bhu-3d','fill-extrusion-height',all?['get','zt']:['min',['get','zt'],cut])}
+$('cut').oninput=e=>setCut(e.target.value);
+$('zo').oninput=e=>applyZ(+e.target.value);
+$('b-auto').onclick=()=>applyZ(zMin);
 
-    const temp = layerStack[index];
-    layerStack[index] = layerStack[targetIndex];
-    layerStack[targetIndex] = temp;
+/* ---------- selection ---------- */
+function setS(kind,id,v){map.setFeatureState({source:SRC[kind],id},{selected:v})}
+function pick(kind,f,multi){
+ const key=kind+'-'+f.id;if(!multi)clearSel(true);
+ if(sel.has(key)){setS(kind,f.id,false);sel.delete(key)}
+ else{setS(kind,f.id,true);sel.set(key,{kind,id:f.id,p:f.properties,geom:f.geometry})}
+ renderSel()}
+function clearSel(parcelToo){
+ sel.forEach(s=>setS(s.kind,s.id,false));sel.clear();
+ if(parcelToo&&pSel!==null){map.setFeatureState({source:'parcel-src',id:pSel},{selected:false});pSel=null;lastParcel=null;
+  $('parcel-out').innerHTML='<div class="ph">Pilih bidang tanah untuk melihat<br>analisis ketinggian bangunan di atasnya.</div>'}
+ renderSel()}
+const HIDE=['_a','_b'];
+const propsTbl=p=>'<table>'+Object.keys(p).filter(k=>!HIDE.includes(k)).map(k=>`<tr><td>${k}</td><td>${typeof p[k]==='number'?n(p[k],2):p[k]}</td></tr>`).join('')+'</table>';
+function renderSel(){
+ const rp=$('rp');if(!sel.size){rp.classList.remove('on');return}
+ rp.classList.add('on');let i=0,h='';
+ sel.forEach((s,key)=>{i++;const p=s.p;let title,bd,over;
+  if(s.kind==='bhu'){title=`Unit · lantai ${Math.floor(p.zb/3)+1}`;bd=`${n(p.zb)}–${n(p.zt)} m`;over=p.zt>LIMIT}
+  else{title=`Bangunan ${p.id??p.gmlid??'#'+i}`;bd=`${n(hOf(p))} m`;over=hOf(p)>LIMIT}
+  h+=`<div class="bc" data-k="${key}"><div class="t"><span>${title}</span><span class="bdg ${over?'o':''}">${bd}${over?' · melebihi':''}</span><button class="x" data-x="${key}">✕</button></div>
+  <details><summary>Atribut</summary>${propsTbl(p)}</details></div>`});
+ $('rp-c').innerHTML=h;
+ $('rp-c').querySelectorAll('.bc').forEach(el=>el.onclick=e=>{
+  if(e.target.dataset.x){const s=sel.get(e.target.dataset.x);setS(s.kind,s.id,false);sel.delete(e.target.dataset.x);renderSel();return}
+  if(e.target.closest('details'))return;
+  const s=sel.get(el.dataset.k);map.flyTo({center:turf.centroid({type:'Feature',geometry:s.geom,properties:{}}).geometry.coordinates,zoom:19,pitch:62,essential:true})})}
 
-    layerStack.forEach((layerItem) => {
-        if (map.getLayer(layerItem.fillId)) map.moveLayer(layerItem.fillId);
-        if (layerItem.outlineId && map.getLayer(layerItem.outlineId)) map.moveLayer(layerItem.outlineId);
-        if (layerItem.highlightId && map.getLayer(layerItem.highlightId)) map.moveLayer(layerItem.highlightId);
-    });
+/* ---------- parcel analysis ---------- */
+const bb=f=>{let b=bbc.get(f);if(!b){b=turf.bbox(f);bbc.set(f,b)}return b};
+function inP(f,parcel){try{return turf.booleanPointInPolygon(turf.pointOnFeature(f),parcel)||turf.booleanPointInPolygon(turf.centroid(f),parcel)}catch(e){return false}}
+function analyze(parcel){
+ const pb=turf.bbox(parcel),hit=f=>{const b=bb(f);return !(b[0]>pb[2]||b[2]<pb[0]||b[1]>pb[3]||b[3]<pb[1])&&inP(f,parcel)};
+ const bl=new Map();
+ (sData?sData.features:[]).forEach((f,i)=>{if(!hit(f))return;const p=f.properties||{},k=p.id??p.gmlid??'i'+i;bl.set(k,Math.max(bl.get(k)||0,hOf(p)))});
+ const units=(bData?bData.features:[]).filter(hit);
+ return{list:[...bl].map(([id,h])=>({id,h})).sort((a,b)=>b.h-a.h),units,top:units.reduce((m,f)=>Math.max(m,f.properties.zt),0)}}
+function parcelHTML(parcel){
+ const a=analyze(parcel),p=parcel.properties,maxH=Math.max(a.list[0]?a.list[0].h:0,a.top);
+ const has=a.list.length||a.units.length;
+ const over=a.list.filter(x=>x.h>LIMIT).length;
+ const v=!has?`<div class="verdict na">Tidak ada data bangunan 3D di atas bidang ini.</div>`
+  :maxH>LIMIT?`<div class="verdict bad">⚠ Melebihi batas ${LIMIT} m — tertinggi ${n(maxH)} m (+${n(maxH-LIMIT)} m)</div>`
+  :`<div class="verdict ok">✓ Sesuai batas ${LIMIT} m — tertinggi ${n(maxH)} m (sisa ${n(LIMIT-maxH)} m)</div>`;
+ const bars=a.list.slice(0,8).map(x=>`<div class="bar"><div><span>${x.id}</span><b>${n(x.h)} m</b></div><i><u class="${x.h>LIMIT?'o':''}" style="width:${Math.min(100,x.h/Math.max(LIMIT*1.5,maxH)*100)}%"></u></i></div>`).join('');
+ return`<div class="nib"><small>NIB</small><b>${p.NIB}</b></div>
+ <div class="stats"><div class="stat"><b>${a.list.length}</b><span>Bangunan</span></div><div class="stat"><b>${n(maxH)}</b><span>Tertinggi (m)</span></div><div class="stat"><b style="color:${over?'#fca5a5':'var(--ok)'}">${over}</b><span>Melebihi</span></div></div>
+ ${v}${a.units.length?`<div class="hint" style="margin:0 0 8px">Bhumitara: ${a.units.length} unit, ±${Math.ceil(a.top/3)} lantai (puncak ${n(a.top)} m)</div>`:''}
+ ${bars}<details open><summary>Atribut bidang</summary>${propsTbl(p)}</details>`}
+function showParcel(nib){
+ const f=pIdx.get(String(nib));if(!f)return;
+ clearSel(true);pSel=f.properties.NIB;lastParcel=f;
+ map.setFeatureState({source:'parcel-src',id:pSel},{selected:true});
+ $('parcel-out').innerHTML=parcelHTML(f);tab('a');$('side').classList.remove('hide')}
+function findNIB(){
+ const v=$('q-nib').value.trim();if(!v)return;
+ const f=pIdx.get(v);if(!f)return toast(`NIB "${v}" tidak ditemukan`);
+ setMode('point');showParcel(v);map.fitBounds(turf.bbox(f),{padding:{top:120,bottom:120,left:420,right:120},maxZoom:19,pitch:60})}
+$('b-nib').onclick=findNIB;$('q-nib').onkeypress=e=>e.key==='Enter'&&findNIB();
 
-    renderLayerControlUI();
-}
+map.on('click',e=>{
+ if(mode!=='point'||draw.getMode()!=='simple_select')return;
+ const q=l=>map.getLayer(l)?map.queryRenderedFeatures(e.point,{layers:[l]})[0]:null;
+ const multi=e.originalEvent.ctrlKey||e.originalEvent.metaKey;let f;
+ if(f=q('bhu-3d'))return pick('bhu',f,multi);
+ if(f=q('sanur-3d'))return pick('sanur',f,multi);
+ if(f=q('parcel-fill')){return pSel!==null&&String(pSel)===String(f.properties.NIB)?clearSel(true):showParcel(f.properties.NIB)}
+ clearSel(true)});
 
-function setLayerOpacity(layerId, opacityVal) {
-    const item = layerStack.find(l => l.id === layerId);
-    if (!item) return;
-    item.opacity = parseFloat(opacityVal);
-
-    if (item.type === 'fill' && map.getLayer(item.fillId)) {
-        map.setPaintProperty(item.fillId, 'fill-opacity', item.opacity);
-    } else if (item.type === 'fill-extrusion' && map.getLayer(item.fillId)) {
-        map.setPaintProperty(item.fillId, 'fill-extrusion-opacity', item.opacity);
-    }
-}
-
-function toggleLayerGroup(layerId, isVisible) {
-    const item = layerStack.find(l => l.id === layerId);
-    if (!item) return;
-
-    item.visible = isVisible;
-    const visibility = isVisible ? 'visible' : 'none';
-    [item.fillId, item.outlineId, item.highlightId].forEach(id => {
-        if (id && map.getLayer(id)) {
-            map.setLayoutProperty(id, 'visibility', visibility);
-        }
-    });
-
-    if (layerId === 'bhumitara_dps') {
-        if (map.getLayer('bhumitara-units-top')) map.setLayoutProperty('bhumitara-units-top', 'visibility', visibility);
-        if (map.getLayer('bhumitara-units-wireframe')) map.setLayoutProperty('bhumitara-units-wireframe', 'visibility', visibility);
-    }
-}
-
-function filterFloorElevation(maxZ) {
-    const val = parseFloat(maxZ);
-    const label = document.getElementById('floor-val');
-    
-    if (!map.getLayer('bhumitara-units-3d')) return;
-
-    if (val >= 60) {
-        label.innerText = "Semua Lantai";
-        map.setFilter('bhumitara-units-3d', null);
-        if (map.getLayer('bhumitara-units-top')) map.setFilter('bhumitara-units-top', null);
-        if (map.getLayer('bhumitara-units-wireframe')) map.setFilter('bhumitara-units-wireframe', null);
-    } else {
-        label.innerText = `${val} Meter (Lantai 1-${Math.max(1, Math.round(val/3))})`;
-        const filterCond = ['<', ['get', 'Z_MIN'], val];
-        map.setFilter('bhumitara-units-3d', filterCond);
-        if (map.getLayer('bhumitara-units-top')) map.setFilter('bhumitara-units-top', filterCond);
-        if (map.getLayer('bhumitara-units-wireframe')) map.setFilter('bhumitara-units-wireframe', filterCond);
-    }
-}
-
-// 4. BUILDING HEIGHT & ID FILTERS
-let currentMinHeight = 0;
-let currentBuildingIdFilter = null;
-
-function applyBuildingLayerFilter() {
-    if (!map.getLayer('sanur-buildings-3d')) return;
-
-    const heightCondition = [
-        '>=', 
-        ['coalesce', ['get', 'tinggi_z'], ['get', 'height'], 0], 
-        currentMinHeight
-    ];
-
-    if (currentBuildingIdFilter) {
-        map.setFilter('sanur-buildings-3d', [
-            'all',
-            heightCondition,
-            ['any',
-                ['==', ['to-string', ['coalesce', ['get', 'id'], '']], currentBuildingIdFilter],
-                ['==', ['to-string', ['coalesce', ['get', 'gmlid'], '']], currentBuildingIdFilter]
-            ]
-        ]);
-    } else {
-        map.setFilter('sanur-buildings-3d', heightCondition);
-    }
-}
-
-function filterBuildingHeight(minHeight) {
-    currentMinHeight = parseFloat(minHeight);
-    document.getElementById('height-val').innerText = `${currentMinHeight} m`;
-    applyBuildingLayerFilter();
-}
-
-function filterBuildingById() {
-    const inputVal = document.getElementById("searchBoxBuilding").value.trim();
-    const msg = document.getElementById("building-search-msg");
-
-    if (!inputVal) {
-        resetBuildingFilter();
-        return;
-    }
-
-    if (!sanurBuildingData || !sanurBuildingData.features) return;
-
-    const matches = sanurBuildingData.features.filter(f => {
-        const p = f.properties || {};
-        return String(p.id) === inputVal || String(p.gmlid) === inputVal;
-    });
-
-    if (matches.length === 0) {
-        msg.style.color = "#e74c3c";
-        msg.innerText = `⚠️ Bangunan ID "${inputVal}" tidak ditemukan!`;
-        return;
-    }
-
-    currentBuildingIdFilter = inputVal;
-    applyBuildingLayerFilter();
-
-    msg.style.color = "#0369a1";
-    msg.innerText = `✅ Ditemukan ${matches.length} bagian poligon dengan ID "${inputVal}".`;
-
-    const fc = turf.featureCollection(matches);
-    map.fitBounds(turf.bbox(fc), { padding: 100 });
-
-    clearAllHighlights(true);
-    matches.forEach(m => {
-        map.setFeatureState({ source: "sanur-buildings-source", id: m.id }, { selected: true });
-        selectedBuildingFeatures.set(m.id, m);
-    });
-    updateBuildingRightPanel();
-}
-
-function resetBuildingFilter() {
-    document.getElementById("searchBoxBuilding").value = "";
-    document.getElementById("building-search-msg").innerText = "";
-    currentBuildingIdFilter = null;
-    applyBuildingLayerFilter();
-}
-document.getElementById("searchBoxBuilding").addEventListener("keypress", (e) => { if(e.key==="Enter") filterBuildingById() });
-
-// 5. CURSOR MODE SWITCHER
-let currentMode = 'pan'; 
-function setPointerMode(mode) {
-    currentMode = mode;
-    document.getElementById('btn-mode-pan').classList.toggle('active', mode === 'pan');
-    document.getElementById('btn-mode-point').classList.toggle('active', mode === 'point');
-    if (mode === 'pan') {
-        map.getCanvas().style.cursor = 'grab';
-        map.dragPan.enable();
-    } else {
-        map.getCanvas().style.cursor = 'crosshair';
-    }
-}
-map.on('mousedown', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grabbing'; });
-map.on('mouseup', () => { if (currentMode === 'pan') map.getCanvas().style.cursor = 'grab'; });
-
-// 6. TAB SWITCHER
-function switchTab(tabName) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-    const activeBtn = document.getElementById(`tab-btn-${tabName}`);
-    const activeContent = document.getElementById(`tab-content-${tabName}`);
-    if (activeBtn && activeContent) {
-        activeBtn.classList.add('active');
-        activeContent.classList.add('active');
-    }
-}
-
-// 7. DRAWING TOOLS
-const draw = new MapboxDraw({
-    displayControlsDefault: false,
-    controls: { point: false, line_string: false, polygon: false, trash: false },
-    styles: [
-        { 'id': 'gl-draw-line', 'type': 'line', 'filter': ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']], 'paint': { 'line-color': '#e74c3c', 'line-width': 3 } },
-        { 'id': 'gl-draw-polygon-fill', 'type': 'fill', 'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']], 'paint': { 'fill-color': '#002B49', 'fill-opacity': 0.3 } },
-        { 'id': 'gl-draw-polygon-stroke', 'type': 'line', 'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']], 'paint': { 'line-color': '#002B49', 'line-width': 2 } },
-        { 'id': 'gl-draw-point', 'type': 'circle', 'filter': ['all', ['==', '$type', 'Point'], ['!=', 'mode', 'static']], 'paint': { 'circle-radius': 6, 'circle-color': '#E5A823' } }
-    ]
-});
+/* ---------- drawing ---------- */
+const draw=new MapboxDraw({displayControlsDefault:false,styles:[
+ {id:'d-line',type:'line',filter:['all',['==','$type','LineString'],['!=','mode','static']],paint:{'line-color':'#22d3ee','line-width':3}},
+ {id:'d-fill',type:'fill',filter:['all',['==','$type','Polygon'],['!=','mode','static']],paint:{'fill-color':'#22d3ee','fill-opacity':.2}},
+ {id:'d-stroke',type:'line',filter:['all',['==','$type','Polygon'],['!=','mode','static']],paint:{'line-color':'#22d3ee','line-width':2}},
+ {id:'d-pt',type:'circle',filter:['all',['==','$type','Point'],['!=','mode','static']],paint:{'circle-radius':6,'circle-color':'#f2b441'}}]});
 map.addControl(draw);
+['create','delete','update'].forEach(t=>map.on('draw.'+t,measure));
+function measure(){
+ const fs=draw.getAll().features;
+ $('measure').innerHTML=fs.length?'<table>'+fs.map((f,i)=>{const t=f.geometry.type;
+  const v=t==='Polygon'?`${Math.round(turf.area(f)).toLocaleString('id')} m²`:t==='LineString'?`${n(turf.length(f,{units:'kilometers'})*1000,2)} m`:`${f.geometry.coordinates[1].toFixed(5)}, ${f.geometry.coordinates[0].toFixed(5)}`;
+  return`<tr><td>#${i+1} ${t}</td><td>${v}</td></tr>`}).join('')+'</table>':'<div class="ph">Hasil ukur tampil di sini.</div>'}
+function saveDraw(){const d=draw.getAll();if(!d.features.length)return toast('Belum ada gambar');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d)],{type:'application/json'}));a.download='sanur_hasil_pengukuran.geojson';a.click()}
 
-function startDraw(mode) { draw.changeMode(mode); }
-function deleteSelected() { draw.trash(); updateDrawInfo(); }
-map.on('draw.create', updateDrawInfo);
-map.on('draw.delete', updateDrawInfo);
-map.on('draw.update', updateDrawInfo);
+/* ---------- data loading ---------- */
+const J=u=>fetch(u).then(r=>{if(!r.ok)throw new Error(u);return r.json()});
+const stripZ=c=>typeof c[0]==='number'?[c[0],c[1]]:c.map(stripZ);
 
-function updateDrawInfo() {
-    const data = draw.getAll();
-    const panel = document.getElementById('measure-result');
-    if (data.features.length > 0) {
-        let html = '<table class="info-table">';
-        data.features.forEach((feature, index) => {
-            let info = "";
-            let tipe = feature.geometry.type;
-            if (tipe === 'Polygon') info = `${Math.round(turf.area(feature))} m²`;
-            else if (tipe === 'LineString') info = `${(turf.length(feature, {units: 'kilometers'}) * 1000).toFixed(2)} m`;
-            else if (tipe === 'Point') info = `Lat: ${feature.geometry.coordinates[1].toFixed(5)}`;
-            html += `<tr><td>#${index+1} (${tipe})</td><td>${info}</td></tr>`;
-        });
-        html += '</table>';
-        panel.innerHTML = html;
-    } else {
-        panel.innerHTML = '<div class="info-placeholder">Hasil ukur akan tampil di sini.</div>';
-    }
-}
+map.on('load',()=>{
+ setMode('pan');renderLayers();
+ const pP=J('SanurParcel.geojson').then(d=>{
+  pData=d;d.features.forEach(f=>pIdx.set(String(f.properties.NIB),f));
+  map.addSource('parcel-src',{type:'geojson',data:d,promoteId:'NIB'});
+  map.addLayer({id:'parcel-fill',type:'fill',source:'parcel-src',paint:{'fill-color':['case',SEL,'#22d3ee','#f2b441'],'fill-opacity':.25}});
+  map.addLayer({id:'parcel-line',type:'line',source:'parcel-src',paint:{'line-color':'#f2b441','line-width':1.2}});
+  map.addLayer({id:'parcel-hl',type:'line',source:'parcel-src',paint:{'line-color':['case',SEL,'#22d3ee','rgba(0,0,0,0)'],'line-width':4}});
+  if(d.features.length)map.fitBounds(turf.bbox(d),{padding:{top:100,bottom:60,left:400,right:60}});
+ }).catch(()=>toast('SanurParcel.geojson tidak ditemukan'));
 
-function downloadDrawings() {
-    const data = draw.getAll();
-    if (data.features.length === 0) return alert("Belum ada gambar!");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], {type: "application/json"}));
-    a.download = "sanur_hasil_pengukuran.geojson";
-    a.click();
-}
+ const pS=J('Sanur.geojson').then(d=>{
+  sData=d;d.features.forEach((f,i)=>f.id=i);
+  map.addSource('sanur-src',{type:'geojson',data:d});
+  map.addLayer({id:'sanur-3d',type:'fill-extrusion',source:'sanur-src',paint:{'fill-extrusion-color':sanurColor(),'fill-extrusion-height':H,'fill-extrusion-base':0,'fill-extrusion-opacity':.9}});
+ }).catch(()=>toast('Sanur.geojson tidak ditemukan'));
 
-function setBasemap(type, btnElement) {
-    const url = (type === "osm") ? "https://tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-    map.getSource("basemap").setTiles([url]);
-    document.querySelectorAll('.btn-map').forEach(b => b.classList.remove('active'));
-    if(btnElement) btnElement.classList.add('active');
-}
+ const pB=J('Bhumitara_DPS.geojson').then(d=>{
+  bData=d;
+  d.features.forEach((f,i)=>{f.id=i;const p=f.properties=f.properties||{};
+   let a=Number(p.Z_MIN)||0,b=Number(p.Z_MAX);
+   if(!(b>a))b=a+(b>0?b:3); /* Z_MAX ≤ Z_MIN → dianggap tebal lantai */
+   p._a=a;p._b=b;f.geometry.coordinates=stripZ(f.geometry.coordinates)});
+  zMin=Math.min(...d.features.map(f=>f.properties._a));
+  $('zo').min=Math.floor(zMin)-30;$('zo').max=Math.ceil(zMin)+30;
+  d.features.forEach(f=>{f.properties.zb=f.properties._a-zMin;f.properties.zt=f.properties._b-zMin});
+  map.addSource('bhu-src',{type:'geojson',data:d});
+  map.addLayer({id:'bhu-3d',type:'fill-extrusion',source:'bhu-src',paint:{'fill-extrusion-color':bhuColor(),'fill-extrusion-base':['get','zb'],'fill-extrusion-height':['get','zt'],'fill-extrusion-opacity':.8}});
+  map.addLayer({id:'bhu-line',type:'line',source:'bhu-src',paint:{'line-color':'#ffffff','line-width':1,'line-opacity':.5}});
+  applyZ(zMin);
+ }).catch(()=>toast('Bhumitara_DPS.geojson tidak ditemukan'));
 
-// 8. SPATIAL DATA LOADING & STORAGE
-let sanurParcelData = null;
-let sanurBuildingData = null;
-let bhumitaraData = null;
-let clickedParcelId = null;
-let selectedBuildingFeatures = new Map();
-
-map.on("load", () => {
-    setPointerMode('pan');
-
-    // A. LOAD SANUR 2D PARCEL DATA
-    fetch("SanurParcel.geojson").then(r => r.json()).then(data => {
-        sanurParcelData = data;
-        map.addSource("sanur-parcel-source", { type: "geojson", data: data, promoteId: "NIB" });
-        map.addLayer({ id: "sanur-parcel-fill", type: "fill", source: "sanur-parcel-source", paint: { "fill-color": "#e74c3c", "fill-opacity": 0.3 } });
-        map.addLayer({ id: "sanur-parcel-outline", type: "line", source: "sanur-parcel-source", paint: { "line-color": "#c0392b", "line-width": 1.5 } });
-        map.addLayer({
-            id: "sanur-parcel-highlight", type: "line", source: "sanur-parcel-source",
-            paint: { "line-color": ["case", ["boolean", ["feature-state", "selected"], false], "#00FFFF", "transparent"], "line-width": 4 }
-        });
-
-        if (data.features && data.features.length > 0) {
-            map.fitBounds(turf.bbox(data), { padding: 50 });
-        }
-        renderLayerControlUI();
-    }).catch(e => console.log("SanurParcel.geojson missing"));
-
-    // B. LOAD SANUR 3D BUILDINGS DATA (TRANSPARENT OUTER SHELL)
-    fetch("Sanur.geojson").then(r => r.json()).then(dataSanur => {
-        sanurBuildingData = dataSanur;
-        dataSanur.features.forEach((feature, index) => { feature.id = index; }); 
-        map.addSource("sanur-buildings-source", { type: "geojson", data: dataSanur });
-        map.addLayer({
-            id: "sanur-buildings-3d", type: "fill-extrusion", source: "sanur-buildings-source",
-            paint: {
-                "fill-extrusion-color": ["case", ["boolean", ["feature-state", "selected"], false], "#e74c3c", "#4a90e2"],
-                "fill-extrusion-height": ["coalesce", ["get", "tinggi_z"], ["get", "height"], 5],
-                "fill-extrusion-base": 0,
-                "fill-extrusion-opacity": 0.25
-            }
-        });
-        renderLayerControlUI();
-    }).catch(e => console.log("Sanur.geojson missing"));
-
-    // C. FETCH DATA BHUMITARA_DPS (X-RAY / GLASS STYLE INNER UNITS)
-    fetch("Bhumitara_DPS.geojson")
-        .then(r => r.json())
-        .then(dataBhumitara => {
-            function stripZCoords(coords) {
-                if (typeof coords[0] === 'number') {
-                    return [coords[0], coords[1]];
-                }
-                return coords.map(stripZCoords);
-            }
-
-            dataBhumitara.features.forEach((feature, index) => {
-                feature.id = index;
-
-                if (feature.properties) {
-                    feature.properties.Z_MIN = Number(feature.properties.Z_MIN) || 0;
-                    feature.properties.Z_MAX = Number(feature.properties.Z_MAX) || 3;
-                }
-
-                if (feature.geometry && feature.geometry.coordinates) {
-                    feature.geometry.coordinates = stripZCoords(feature.geometry.coordinates);
-                }
-            });
-
-            bhumitaraData = dataBhumitara;
-
-            map.addSource("bhumitara-source", {
-                type: "geojson",
-                data: dataBhumitara
-            });
-
-            // 1. LAYER BODY 3D UNIT (TRANSPARENT MAGENTA GLASS)
-            map.addLayer({
-                id: "bhumitara-units-3d",
-                type: "fill-extrusion",
-                source: "bhumitara-source",
-                paint: {
-                    "fill-extrusion-color": [
-                        "case",
-                        ["boolean", ["feature-state", "selected"], false], "#00fff2",
-                        "#e056fd"
-                    ],
-                    "fill-extrusion-base": ["get", "Z_MIN"],
-                    "fill-extrusion-height": ["get", "Z_MAX"],
-                    "fill-extrusion-opacity": 0.45
-                }
-            });
-
-            // 2. LAYER ATAP / TOP SLAB
-            map.addLayer({
-                id: "bhumitara-units-top",
-                type: "fill-extrusion",
-                source: "bhumitara-source",
-                paint: {
-                    "fill-extrusion-color": "#7efff5",
-                    "fill-extrusion-base": ["-", ["get", "Z_MAX"], 0.15],
-                    "fill-extrusion-height": ["get", "Z_MAX"],
-                    "fill-extrusion-opacity": 0.65
-                }
-            });
-
-            // 3. LAYER WIREFRAME / SEKAT RUANG
-            map.addLayer({
-                id: "bhumitara-units-wireframe",
-                type: "line",
-                source: "bhumitara-source",
-                paint: {
-                    "line-color": "#be2edd",
-                    "line-width": 2.0,
-                    "line-opacity": 0.95
-                }
-            });
-
-            renderLayerControlUI();
-        }).catch(e => console.log("Bhumitara_DPS.geojson missing"));
+ Promise.allSettled([pP,pS,pB]).then(()=>{reorder();$('loader').remove()});
 });
-
-// 9. ROBUST SPATIAL OVERLAP QUERY WITH DEDUPLICATION
-function analyzeBuildingsInParcel(parcelFeature) {
-    if (!sanurBuildingData || !sanurBuildingData.features) return '';
-
-    let insideBuildings = [];
-    const countedKeys = new Set();
-
-    sanurBuildingData.features.forEach((b, idx) => {
-        try {
-            const bProps = b.properties || {};
-            const uniqueKey = bProps.id || bProps.gmlid || `idx-${idx}`;
-
-            const pointInside = turf.pointOnFeature(b);
-            const isInside = turf.booleanPointInPolygon(pointInside, parcelFeature);
-
-            if (isInside) {
-                if (!countedKeys.has(uniqueKey)) {
-                    countedKeys.add(uniqueKey);
-                    insideBuildings.push(b);
-                }
-                return;
-            }
-
-            const intersection = turf.intersect(turf.featureCollection([parcelFeature, b]));
-            if (intersection) {
-                const bArea = turf.area(b);
-                const iArea = turf.area(intersection);
-                if (bArea > 0 && (iArea / bArea) >= 0.25) {
-                    if (!countedKeys.has(uniqueKey)) {
-                        countedKeys.add(uniqueKey);
-                        insideBuildings.push(b);
-                    }
-                }
-            }
-        } catch (err) {}
-    });
-
-    let summaryHtml = `
-        <div style="background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 8px; margin-top: 10px; font-size: 11px;">
-            <div style="font-weight: bold; color: #0369a1; margin-bottom: 4px; font-size: 12px;">🏢 Analisis Bangunan 3D (${insideBuildings.length} Unit)</div>
-    `;
-
-    if (insideBuildings.length === 0) {
-        summaryHtml += `<div style="color:#64748b; font-style:italic;">Tidak ada bangunan 3D tercatat di atas bidang tanah ini.</div>`;
-    } else {
-        insideBuildings.forEach((b, idx) => {
-            const props = b.properties || {};
-            const height = props.tinggi_z || props.height || '-';
-            const bId = props.id || props.gmlid || `#${idx + 1}`;
-            summaryHtml += `
-                <div style="background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px; margin-top: 4px;">
-                    <b>Bangunan ${idx + 1}:</b> ${bId}<br>
-                    <span style="color:#002B49;">Tinggi: <b>${height} m</b></span>
-                </div>
-            `;
-        });
-    }
-
-    summaryHtml += `</div>`;
-    return summaryHtml;
-}
-
-// 10. FLY TO BUILDING & HIGHLIGHT CARD ON CLICK
-function focusBuildingOnMap(bId) {
-    const feature = selectedBuildingFeatures.get(bId);
-    if (!feature) return;
-
-    document.querySelectorAll('.building-card').forEach(card => card.classList.remove('active-building'));
-    const activeCard = document.getElementById(`bcard-${bId}`);
-    if (activeCard) activeCard.classList.add('active-building');
-
-    const center = turf.centroid(feature).geometry.coordinates;
-    map.flyTo({
-        center: center,
-        zoom: 18,
-        pitch: 60,
-        bearing: -20,
-        essential: true
-    });
-}
-
-// 11. RENDER RIGHT FLOATING BUILDING PANEL
-function updateBuildingRightPanel() {
-    const rightPanel = document.getElementById('right-building-panel');
-    const container = document.getElementById('right-building-content');
-
-    if (selectedBuildingFeatures.size === 0) {
-        rightPanel.style.display = 'none';
-        return;
-    }
-
-    rightPanel.style.display = 'block';
-    let html = `<div style="font-weight:600; font-size:11px; color:#002B49; margin-bottom:6px;">Terpilih <b>${selectedBuildingFeatures.size}</b> Objek/Ruang:</div>`;
-    html += `<div class="building-scroll-container">`;
-
-    let count = 1;
-    selectedBuildingFeatures.forEach((feature, bId) => {
-        const props = feature.properties || {};
-        const nama = props.id || props.gmlid || props.NAMA_UNIT || props.OBJECTID || `Objek #${count}`;
-        html += `
-            <div id="bcard-${bId}" class="building-card" onclick="focusBuildingOnMap('${bId}')">
-                <div class="building-card-header">
-                    <span>🏢 #${count} - ${nama}</span>
-                    <button class="btn-remove-building" onclick="event.stopPropagation(); removeSelectedBuilding('${bId}');">✖</button>
-                </div>
-                <table class="info-table">
-        `;
-        for (const k in props) {
-            html += `<tr><td>${k}</td><td>${props[k]}</td></tr>`;
-        }
-        html += `</table></div>`;
-        count++;
-    });
-
-    html += `</div>`;
-    container.innerHTML = html;
-}
-
-function removeSelectedBuilding(bId) {
-    if (String(bId).startsWith('bhumitara-')) {
-        const realId = bId.replace('bhumitara-', '');
-        if (map.getSource("bhumitara-source")) {
-            map.setFeatureState({ source: "bhumitara-source", id: realId }, { selected: false });
-        }
-    } else {
-        if (map.getSource("sanur-buildings-source")) {
-            map.setFeatureState({ source: "sanur-buildings-source", id: bId }, { selected: false });
-        }
-    }
-    selectedBuildingFeatures.delete(bId);
-    updateBuildingRightPanel();
-}
-
-// 12. CLEAR HIGHLIGHTS
-function clearAllHighlights(buildingsOnly = false) {
-    if (!buildingsOnly && clickedParcelId !== null) {
-        map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: false });
-        clickedParcelId = null;
-        document.getElementById('tab-content-bidang').innerHTML = '<div class="info-placeholder">Aktifkan <b>Point Mode</b> lalu klik bidang tanah di peta.</div>';
-        document.getElementById('tab-btn-bidang').disabled = true;
-    }
-
-    selectedBuildingFeatures.forEach((feat, bId) => {
-        if (String(bId).startsWith('bhumitara-')) {
-            const realId = bId.replace('bhumitara-', '');
-            if (map.getSource("bhumitara-source")) {
-                map.setFeatureState({ source: "bhumitara-source", id: realId }, { selected: false });
-            }
-        } else {
-            if (map.getSource("sanur-buildings-source")) {
-                map.setFeatureState({ source: "sanur-buildings-source", id: bId }, { selected: false });
-            }
-        }
-    });
-    selectedBuildingFeatures.clear();
-
-    updateBuildingRightPanel();
-}
-
-// 13. IDENTIFY LOGIC WITH PRIORITIZED INNER UNIT ACCESS
-map.on("click", (e) => {
-    if (currentMode !== 'point' || draw.getMode() !== 'simple_select') return;
-
-    const featuresBhumitara = map.queryRenderedFeatures(e.point, { layers: ['bhumitara-units-3d'] });
-    const featuresBangunan = map.queryRenderedFeatures(e.point, { layers: ['sanur-buildings-3d'] });
-    const featuresParcels = map.queryRenderedFeatures(e.point, { layers: ['sanur-parcel-fill'] });
-
-    const isCtrlPressed = e.originalEvent.ctrlKey || e.originalEvent.metaKey;
-
-    // A. PRIORITY 1: CLICKED AN INTERNAL BHUMITARA UNIT
-    if (featuresBhumitara.length > 0) {
-        const feature = featuresBhumitara[0];
-        const unitId = feature.id;
-        const key = `bhumitara-${unitId}`;
-
-        if (!isCtrlPressed) clearAllHighlights(true);
-
-        const currentState = map.getFeatureState({ source: "bhumitara-source", id: unitId });
-        if (currentState && currentState.selected) {
-            map.setFeatureState({ source: "bhumitara-source", id: unitId }, { selected: false });
-            selectedBuildingFeatures.delete(key);
-        } else {
-            map.setFeatureState({ source: "bhumitara-source", id: unitId }, { selected: true });
-            selectedBuildingFeatures.set(key, feature);
-        }
-
-        updateBuildingRightPanel();
-        focusBuildingOnMap(key);
-        return;
-    }
-
-    // B. PRIORITY 2: CLICKED A 3D OUTER BUILDING
-    if (featuresBangunan.length > 0) {
-        const feature = featuresBangunan[0];
-        const buildingId = feature.id;
-
-        if (!isCtrlPressed) {
-            clearAllHighlights(true); 
-        }
-
-        const currentState = map.getFeatureState({ source: "sanur-buildings-source", id: buildingId });
-
-        if (currentState && currentState.selected) {
-            map.setFeatureState({ source: "sanur-buildings-source", id: buildingId }, { selected: false });
-            selectedBuildingFeatures.delete(buildingId);
-        } else {
-            map.setFeatureState({ source: "sanur-buildings-source", id: buildingId }, { selected: true });
-            selectedBuildingFeatures.set(buildingId, feature);
-        }
-
-        updateBuildingRightPanel();
-        focusBuildingOnMap(buildingId);
-        return;
-    }
-
-    // C. PRIORITY 3: CLICKED A 2D PARCEL
-    if (featuresParcels.length > 0) {
-        const feature = featuresParcels[0];
-        const parcelId = feature.properties.NIB || feature.id;
-        const currentState = map.getFeatureState({ source: "sanur-parcel-source", id: parcelId });
-
-        if (currentState && currentState.selected) {
-            clearAllHighlights(false);
-            return;
-        }
-
-        clearAllHighlights(false);
-        clickedParcelId = parcelId;
-        map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
-
-        let rows = `<table class="info-table">`;
-        for (const k in feature.properties) { rows += `<tr><td>${k}</td><td>${feature.properties[k]}</td></tr>`; }
-        rows += `</table>`;
-
-        rows += analyzeBuildingsInParcel(feature);
-
-        const tabBtnBidang = document.getElementById('tab-btn-bidang');
-        document.getElementById('tab-content-bidang').innerHTML = rows;
-        tabBtnBidang.disabled = false;
-        switchTab('bidang');
-        return;
-    }
-
-    // D. CLICKED EMPTY SPACE
-    clearAllHighlights(false);
-});
-
-// 14. SEARCH BY SANUR NIB WITH BUILDING OVERLAP QUERY
-function searchNIBPanur() {
-    const input = document.getElementById("searchBoxSanur").value.trim();
-    if (!input || !sanurParcelData) return;
-    
-    const found = sanurParcelData.features.find(f => String(f.properties.NIB) === input);
-    if (!found) return alert("NIB Sanur tidak ditemukan!");
-
-    setPointerMode('point');
-    clearAllHighlights(false);
-
-    map.fitBounds(turf.bbox(found), { padding: 100 });
-
-    clickedParcelId = found.properties.NIB;
-    map.setFeatureState({ source: "sanur-parcel-source", id: clickedParcelId }, { selected: true });
-
-    let rows = `<table class="info-table">`;
-    for (const k in found.properties) { rows += `<tr><td>${k}</td><td>${found.properties[k]}</td></tr>`; }
-    rows += `</table>`;
-
-    rows += analyzeBuildingsInParcel(found);
-
-    document.getElementById('tab-content-bidang').innerHTML = rows;
-    document.getElementById('tab-btn-bidang').disabled = false;
-    switchTab('bidang');
-}
-document.getElementById("searchBoxSanur").addEventListener("keypress", (e) => { if(e.key==="Enter") searchNIBPanur() });
 </script>
 </body>
 </html>
