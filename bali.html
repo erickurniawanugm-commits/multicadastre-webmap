@@ -92,6 +92,16 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
 .bdg{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(91,155,213,.25);color:#9cc7ee;white-space:nowrap}
 .bdg.o{background:rgba(239,68,68,.25);color:#fca5a5}
 .x{border:0;background:none;color:var(--m);font-size:14px}
+#detail{position:absolute;top:74px;left:50%;transform:translateX(-50%);z-index:44;display:none;padding:14px 16px;background:rgba(40,48,40,.82);backdrop-filter:blur(14px);border:1px solid var(--l);border-radius:20px;box-shadow:0 10px 34px rgba(0,0,0,.4);max-width:calc(100vw - 800px);min-width:420px}
+#detail.on{display:block}
+#detail .dt{font-weight:700;letter-spacing:1.5px;font-size:13px}
+#detail .ds{color:#5eead4;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:2px 0 10px}
+.tiles{display:grid;grid-template-columns:repeat(4,auto);gap:8px}
+.tl{background:rgba(255,255,255,.1);border-radius:12px;padding:8px 12px}
+.tl span{display:block;font-size:11px;color:var(--m)}
+.tl b{font-size:15px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:block}
+@media(max-width:1250px){#detail{left:384px;transform:none;min-width:0;max-width:calc(100vw - 740px)}}
+@media(max-width:900px){#detail{display:none!important}}
 #dock{position:absolute;right:56px;bottom:12px;z-index:40;display:flex;gap:8px;align-items:flex-end}
 .leg{padding:9px 12px;font-size:11px;display:flex;flex-direction:column;gap:4px}
 .leg span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:var(--k)}
@@ -154,6 +164,13 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
       <div class="hint">Geser untuk memotong gedung per lantai (asumsi 3 m/lantai).</div>
     </div>
     <div class="box">
+      <div class="lbl"><span>Jarak antar ruangan</span><b id="gap-v">0.3 m</b></div>
+      <input type="range" id="gap" min="0" max="1.2" step="0.05" value="0.3">
+      <div class="lbl" style="margin-top:10px"><span>Renggangkan antar lantai</span><b id="exp-v">0 m</b></div>
+      <input type="range" id="exp" min="0" max="8" step="0.5" value="0">
+      <div class="hint">Setiap ruangan diberi sekat dan setiap lantai punya pelat tegas. Renggangkan untuk melihat lantai terpisah (exploded view).</div>
+    </div>
+    <div class="box">
       <div class="lbl"><span>Koreksi dasar Z Bhumitara</span><b id="zo-v">–</b></div>
       <input type="range" id="zo" min="-30" max="30" step="0.5" value="0">
       <div class="row" style="margin-top:8px"><button class="btn s" id="b-auto" style="flex:1">Auto (rapatkan ke tanah)</button></div>
@@ -181,6 +198,7 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
 </aside>
 <button id="tog" onclick="$('side').classList.toggle('hide')">⇆</button>
 
+<div id="detail"></div>
 <div id="rp" class="glass">
   <div class="hd"><span>🏢 Bangunan terpilih</span><button class="x" onclick="clearSel(false)">✕</button></div>
   <div class="bd" id="rp-c"></div>
@@ -224,8 +242,8 @@ const $=id=>document.getElementById(id);
 const n=(x,d=1)=>Number.isFinite(+x)&&x!==null&&x!==''?(+x).toFixed(d).replace(/\.0+$/,''):'–';
 const toast=m=>{const d=document.createElement('div');d.textContent=m;$('toast').appendChild(d);setTimeout(()=>d.remove(),5000)};
 const BM={osm:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',esri:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',dark:'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'};
-const SRC={sanur:'sanur-src',bhu:'bhu-src'};
-let LIMIT=15,mode='pan',pSel=null,lastParcel=null,minH=0,idF=null,cut=60,zMax=60,zMin=0,zOff=0;
+const SRC={sanur:'sanur-src',bhu:'bhu-body-src'};
+let exp=0,LIMIT=15,mode='pan',pSel=null,lastParcel=null,minH=0,idF=null,cut=60,zMax=60,zMin=0,zOff=0;
 let pData,sData,bData;const pIdx=new Map(),sel=new Map(),bbc=new WeakMap();
 
 const map=new maplibregl.Map({container:'map',center:[115.2625,-8.6881],zoom:16,pitch:58,bearing:-15,maxPitch:80,
@@ -265,7 +283,7 @@ window.addEventListener('keydown',e=>{
 const stack=[
  {k:'parcel',n:'Bidang Tanah (NIB)',ids:['parcel-fill','parcel-line','parcel-hl'],main:'parcel-fill',prop:'fill-opacity',op:.25,vis:true},
  {k:'sanur',n:'Bangunan 3D Sanur',ids:['sanur-3d'],main:'sanur-3d',prop:'fill-extrusion-opacity',op:.9,vis:true},
- {k:'bhu',n:'Bhumitara per Lantai',ids:['bhu-3d','bhu-line'],main:'bhu-3d',prop:'fill-extrusion-opacity',op:.8,vis:true}];
+ {k:'bhu',n:'Bhumitara per Lantai',ids:['bhu-slab','bhu-3d','bhu-line'],main:'bhu-3d',prop:'fill-extrusion-opacity',op:.95,vis:true}];
 function renderLayers(){
  const c=$('layers');c.innerHTML='';
  [...stack].reverse().forEach((s,i)=>{const ix=stack.length-1-i,d=document.createElement('div');d.className='lay';
@@ -307,18 +325,31 @@ $('b-bid').onclick=findB;$('b-rst').onclick=resetB;$('q-b').onkeypress=e=>e.key=
 /* ---------- Bhumitara Z handling (fix floating) ---------- */
 function applyZ(off){
  zOff=off;let mx=0;
- bData.features.forEach(f=>{const p=f.properties;p.zb=p._a-off;p.zt=p._b-off;mx=Math.max(mx,p.zt)});
+ bData.features.forEach(f=>{const p=f.properties;p.zb=p._a-off;p.zt=p._b-off;p.fi=Math.max(0,Math.floor((p.zb+.01)/3));mx=Math.max(mx,p.zt)});
  zMax=Math.max(3,Math.ceil(mx));$('cut').max=zMax;$('zo').value=off;
  $('zo-v').textContent=n(off)+' m';
  $('zo-h').textContent=`Z-min data = ${n(zMin)} m. Nilai dikurangi ${n(off)} m agar lantai terbawah menapak tanah.`;
- const s=map.getSource('bhu-src');if(s)s.setData(bData);
+ if(map.getSource('bhu-src')){map.getSource('bhu-src').setData(bData);rebuildBody()}
  setCut(zMax)}
 function setCut(v){
  cut=+v;$('cut').value=cut;const all=cut>=zMax;
- $('cut-v').textContent=all?'Semua lantai':`≤ ${cut} m · lantai ${Math.ceil(cut/3)}`;
+ $('cut-v').textContent=all?'Semua lantai':`≤ ${cut} m · lantai ${Math.ceil(cut/3)}`;bhuPaint()}
+function bhuPaint(){
  if(!map.getLayer('bhu-3d'))return;
- map.setFilter('bhu-3d',all?null:['<',['get','zb'],cut]);
- map.setPaintProperty('bhu-3d','fill-extrusion-height',all?['get','zt']:['min',['get','zt'],cut])}
+ const off=['*',['get','fi'],exp],bs=['+',['get','zb'],off],all=cut>=zMax,t=all?['get','zt']:['min',['get','zt'],cut],f=all?null:['<',['get','zb'],cut];
+ map.setPaintProperty('bhu-slab','fill-extrusion-base',bs);
+ map.setPaintProperty('bhu-slab','fill-extrusion-height',['+',bs,.25]);
+ map.setPaintProperty('bhu-3d','fill-extrusion-base',['+',bs,.25]);
+ map.setPaintProperty('bhu-3d','fill-extrusion-height',['max',['+',t,off],['+',bs,.4]]);
+ map.setFilter('bhu-3d',f);map.setFilter('bhu-slab',f)}
+function insetData(m){
+ if(!m)return bData;
+ return{type:'FeatureCollection',features:bData.features.map(f=>{let g=null;try{g=turf.buffer(f,-m,{units:'meters'})}catch(e){}
+  return{type:'Feature',id:f.id,properties:f.properties,geometry:g&&g.geometry?g.geometry:f.geometry}})}}
+function rebuildBody(){const s=map.getSource('bhu-body-src');if(s&&bData)s.setData(insetData(+$('gap').value))}
+$('gap').oninput=e=>$('gap-v').textContent=n(e.target.value,2)+' m';
+$('gap').onchange=rebuildBody;
+$('exp').oninput=e=>{exp=+e.target.value;$('exp-v').textContent=n(exp)+' m';bhuPaint()};
 $('cut').oninput=e=>setCut(e.target.value);
 $('zo').oninput=e=>applyZ(+e.target.value);
 $('b-auto').onclick=()=>applyZ(zMin);
@@ -338,19 +369,26 @@ function clearSel(parcelToo){
 const HIDE=['_a','_b'];
 const propsTbl=p=>'<table>'+Object.keys(p).filter(k=>!HIDE.includes(k)).map(k=>`<tr><td>${k}</td><td>${typeof p[k]==='number'?n(p[k],2):p[k]}</td></tr>`).join('')+'</table>';
 function renderSel(){
- const rp=$('rp');if(!sel.size){rp.classList.remove('on');return}
+ const rp=$('rp');if(!sel.size){rp.classList.remove('on');detail();return}
  rp.classList.add('on');let i=0,h='';
  sel.forEach((s,key)=>{i++;const p=s.p;let title,bd,over;
   if(s.kind==='bhu'){title=`Unit · lantai ${Math.floor(p.zb/3)+1}`;bd=`${n(p.zb)}–${n(p.zt)} m`;over=p.zt>LIMIT}
   else{title=`Bangunan ${p.id??p.gmlid??'#'+i}`;bd=`${n(hOf(p))} m`;over=hOf(p)>LIMIT}
   h+=`<div class="bc" data-k="${key}"><div class="t"><span>${title}</span><span class="bdg ${over?'o':''}">${bd}${over?' · melebihi':''}</span><button class="x" data-x="${key}">✕</button></div>
   <details><summary>Atribut</summary>${propsTbl(p)}</details></div>`});
- $('rp-c').innerHTML=h;
+ $('rp-c').innerHTML=h;detail();
  $('rp-c').querySelectorAll('.bc').forEach(el=>el.onclick=e=>{
   if(e.target.dataset.x){const s=sel.get(e.target.dataset.x);setS(s.kind,s.id,false);sel.delete(e.target.dataset.x);renderSel();return}
   if(e.target.closest('details'))return;
   const s=sel.get(el.dataset.k);map.flyTo({center:turf.centroid({type:'Feature',geometry:s.geom,properties:{}}).geometry.coordinates,zoom:19,pitch:62,essential:true})})}
 
+function detail(){
+ const el=$('detail');let last=null;sel.forEach(s=>{if(s.kind==='bhu')last=s});
+ if(!last){el.classList.remove('on');return}
+ const p=last.p,get=re=>{const k=Object.keys(p).find(k=>re.test(k)&&!HIDE.includes(k)&&p[k]!==''&&p[k]!=null);return k?p[k]:null};
+ const ar=get(/luas|area/i)??Math.round(turf.area(bData.features[last.id]));
+ el.innerHTML=`<div class="dt">DETAIL UNIT 3D</div><div class="ds">${get(/proyek|gedung|bangunan|name|nama/i)??'Bhumitara'}</div><div class="tiles">${[['Unit',get(/unit|ruang|id$/i)??last.id],['Lantai',Math.floor((p.zb+.01)/3)+1],['Luas m²',ar],['Penggunaan',get(/guna|fungsi|use|tipe|type/i)??'–']].map(([a,b])=>`<div class="tl"><span>${a}</span><b>${b}</b></div>`).join('')}</div>`;
+ el.classList.add('on')}
 /* ---------- parcel analysis ---------- */
 const bb=f=>{let b=bbc.get(f);if(!b){b=turf.bbox(f);bbc.set(f,b)}return b};
 function inP(f,parcel){try{return turf.booleanPointInPolygon(turf.pointOnFeature(f),parcel)||turf.booleanPointInPolygon(turf.centroid(f),parcel)}catch(e){return false}}
@@ -439,7 +477,9 @@ map.on('load',()=>{
   $('zo').min=Math.floor(zMin)-30;$('zo').max=Math.ceil(zMin)+30;
   d.features.forEach(f=>{f.properties.zb=f.properties._a-zMin;f.properties.zt=f.properties._b-zMin});
   map.addSource('bhu-src',{type:'geojson',data:d});
-  map.addLayer({id:'bhu-3d',type:'fill-extrusion',source:'bhu-src',paint:{'fill-extrusion-color':bhuColor(),'fill-extrusion-base':['get','zb'],'fill-extrusion-height':['get','zt'],'fill-extrusion-opacity':.8}});
+  map.addSource('bhu-body-src',{type:'geojson',data:d});
+  map.addLayer({id:'bhu-slab',type:'fill-extrusion',source:'bhu-src',paint:{'fill-extrusion-color':'#0f172a','fill-extrusion-base':['get','zb'],'fill-extrusion-height':['+',['get','zb'],.25],'fill-extrusion-opacity':.95}});
+  map.addLayer({id:'bhu-3d',type:'fill-extrusion',source:'bhu-body-src',paint:{'fill-extrusion-color':bhuColor(),'fill-extrusion-base':['+',['get','zb'],.25],'fill-extrusion-height':['get','zt'],'fill-extrusion-opacity':.95}});
   map.addLayer({id:'bhu-line',type:'line',source:'bhu-src',paint:{'line-color':'#ffffff','line-width':1,'line-opacity':.5}});
   applyZ(zMin);
  }).catch(()=>toast('Bhumitara_DPS.geojson tidak ditemukan'));
