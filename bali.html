@@ -102,6 +102,14 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
 .tl b{font-size:15px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:block}
 @media(max-width:1250px){#detail{left:384px;transform:none;min-width:0;max-width:calc(100vw - 740px)}}
 @media(max-width:900px){#detail{display:none!important}}
+.bdg.g{background:rgba(52,211,153,.22);color:var(--ok)}
+.tabs button{font-size:11.5px;padding:8px 0}
+.lg{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin:8px 0}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;background:var(--k)}
+.pr{display:grid;grid-template-columns:1fr 90px;gap:6px 10px;align-items:center;font-size:12px}
+.pr input{text-align:right}
+.it{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:9px;background:var(--in);margin-top:5px;cursor:pointer;font-size:12px}
+.it:hover{outline:1px solid var(--g)}
 #dock{position:absolute;right:56px;bottom:12px;z-index:40;display:flex;gap:8px;align-items:flex-end}
 .leg{padding:9px 12px;font-size:11px;display:flex;flex-direction:column;gap:4px}
 .leg span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;background:var(--k)}
@@ -128,10 +136,11 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
 
 <aside id="side" class="glass">
   <div class="tabs">
-    <button data-t="a" class="on">📍 Cek NIB</button>
-    <button data-t="b">🏢 3D</button>
-    <button data-t="c">🗂 Layer</button>
-    <button data-t="d">📏 Ukur</button>
+    <button data-t="a" class="on">Cek NIB</button>
+    <button data-t="b">3D</button>
+    <button data-t="e">Tata Ruang</button>
+    <button data-t="c">Layer</button>
+    <button data-t="d">Ukur</button>
   </div>
 
   <div class="pane on" id="pane-a">
@@ -178,6 +187,21 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
     </div>
   </div>
 
+  <div class="pane" id="pane-e">
+    <div class="box">
+      <h3>Parameter tata ruang</h3>
+      <div class="pr">
+        <span>KDB maks (%)</span><input type="number" id="p-kdb" value="60">
+        <span>KLB maks</span><input type="number" id="p-klb" value="1.8" step="0.1">
+        <span>GSB / sempadan (m)</span><input type="number" id="p-gsb" value="3" step="0.5">
+        <span>Tinggi lantai (m)</span><input type="number" id="p-fl" value="3" step="0.5">
+      </div>
+      <div class="hint">Tinggi maksimum mengikuti slider di tab Cek NIB. Sesuaikan dengan RDTR / aturan zona setempat.</div>
+    </div>
+    <div class="row"><button class="btn" id="b-scan" style="flex:1">🔍 Pindai semua bidang</button><button class="btn s" id="b-rs">Reset warna</button></div>
+    <div id="scan-out"><div class="ph">Pindai untuk mewarnai seluruh bidang berdasarkan kesesuaian KDB, KLB, GSB, dan tinggi.</div></div>
+  </div>
+
   <div class="pane" id="pane-c">
     <div><h3>Layer &amp; urutan</h3><div id="layers" style="display:flex;flex-direction:column;gap:8px"></div></div>
   </div>
@@ -209,6 +233,7 @@ details summary{cursor:pointer;color:var(--m);font-size:11px;margin:8px 0 4px}
     <span style="--k:#5b9bd5">≤ batas tinggi</span>
     <span style="--k:#ef4444">&gt; batas tinggi</span>
     <span style="--k:#22d3ee">Lantai Bhumitara</span>
+    <span style="--k:#fb923c">Melanggar GSB</span>
     <span style="--k:#fbbf24">Terpilih</span>
   </div>
   <div class="seg" id="bm"><button class="on" data-b="osm">Peta</button><button data-b="esri">Satelit</button><button data-b="dark">Gelap</button></div>
@@ -243,7 +268,7 @@ const n=(x,d=1)=>Number.isFinite(+x)&&x!==null&&x!==''?(+x).toFixed(d).replace(/
 const toast=m=>{const d=document.createElement('div');d.textContent=m;$('toast').appendChild(d);setTimeout(()=>d.remove(),5000)};
 const BM={osm:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',esri:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',dark:'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'};
 const SRC={sanur:'sanur-src',bhu:'bhu-body-src'};
-let exp=0,LIMIT=15,mode='pan',pSel=null,lastParcel=null,minH=0,idF=null,cut=60,zMax=60,zMin=0,zOff=0;
+let lastC=null,gsbIds=[],scanRows=[],exp=0,LIMIT=15,mode='pan',pSel=null,lastParcel=null,minH=0,idF=null,cut=60,zMax=60,zMin=0,zOff=0;
 let pData,sData,bData;const pIdx=new Map(),sel=new Map(),bbc=new WeakMap();
 
 const map=new maplibregl.Map({container:'map',center:[115.2625,-8.6881],zoom:16,pitch:58,bearing:-15,maxPitch:80,
@@ -255,7 +280,8 @@ map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-left');
 /* ---------- expressions ---------- */
 const H=['coalesce',['get','tinggi_z'],['get','height'],5];
 const SEL=['boolean',['feature-state','selected'],false];
-const sanurColor=()=>['case',SEL,'#fbbf24',['>',H,LIMIT],'#ef4444','#5b9bd5'];
+const sanurColor=()=>['case',SEL,'#fbbf24',['>',H,LIMIT],'#ef4444',['boolean',['feature-state','gsb'],false],'#fb923c','#5b9bd5'];
+const P={kdb:60,klb:1.8,gsb:3,fl:3};
 const bhuColor=()=>['case',SEL,'#fbbf24',['>=',['get','zb'],LIMIT],'#ef4444',['interpolate',['linear'],['get','zb'],0,'#22d3ee',6,'#60a5fa',12,'#a78bfa',24,'#f0abfc']];
 const hOf=p=>+(p.tinggi_z??p.height??0);
 
@@ -281,9 +307,9 @@ window.addEventListener('keydown',e=>{
 
 /* ---------- layer manager ---------- */
 const stack=[
- {k:'parcel',n:'Bidang Tanah (NIB)',ids:['parcel-fill','parcel-line','parcel-hl'],main:'parcel-fill',prop:'fill-opacity',op:.25,vis:true},
+ {k:'parcel',n:'Bidang Tanah (NIB)',ids:['parcel-fill','parcel-line','parcel-hl','gsb-line'],main:'parcel-fill',prop:'fill-opacity',op:.25,vis:true},
  {k:'sanur',n:'Bangunan 3D Sanur',ids:['sanur-3d'],main:'sanur-3d',prop:'fill-extrusion-opacity',op:.9,vis:true},
- {k:'bhu',n:'Bhumitara per Lantai',ids:['bhu-slab','bhu-3d','bhu-line'],main:'bhu-3d',prop:'fill-extrusion-opacity',op:.95,vis:true}];
+ {k:'bhu',n:'Bhumitara per Lantai',ids:['bhu-slab','bhu-3d'],main:'bhu-3d',prop:'fill-extrusion-opacity',op:.95,vis:true}];
 function renderLayers(){
  const c=$('layers');c.innerHTML='';
  [...stack].reverse().forEach((s,i)=>{const ix=stack.length-1-i,d=document.createElement('div');d.className='lay';
@@ -363,6 +389,7 @@ function pick(kind,f,multi){
  renderSel()}
 function clearSel(parcelToo){
  sel.forEach(s=>setS(s.kind,s.id,false));sel.clear();
+ if(parcelToo)clearGsb();
  if(parcelToo&&pSel!==null){map.setFeatureState({source:'parcel-src',id:pSel},{selected:false});pSel=null;lastParcel=null;
   $('parcel-out').innerHTML='<div class="ph">Pilih bidang tanah untuk melihat<br>analisis ketinggian bangunan di atasnya.</div>'}
  renderSel()}
@@ -394,13 +421,31 @@ const bb=f=>{let b=bbc.get(f);if(!b){b=turf.bbox(f);bbc.set(f,b)}return b};
 function inP(f,parcel){try{return turf.booleanPointInPolygon(turf.pointOnFeature(f),parcel)||turf.booleanPointInPolygon(turf.centroid(f),parcel)}catch(e){return false}}
 function analyze(parcel){
  const pb=turf.bbox(parcel),hit=f=>{const b=bb(f);return !(b[0]>pb[2]||b[2]<pb[0]||b[1]>pb[3]||b[3]<pb[1])&&inP(f,parcel)};
- const bl=new Map();
- (sData?sData.features:[]).forEach((f,i)=>{if(!hit(f))return;const p=f.properties||{},k=p.id??p.gmlid??'i'+i;bl.set(k,Math.max(bl.get(k)||0,hOf(p)))});
+ const bl=new Map(),hits=[];
+ (sData?sData.features:[]).forEach((f,i)=>{if(!hit(f))return;hits.push(f);const p=f.properties||{},k=p.id??p.gmlid??'i'+i;bl.set(k,Math.max(bl.get(k)||0,hOf(p)))});
  const units=(bData?bData.features:[]).filter(hit);
- return{list:[...bl].map(([id,h])=>({id,h})).sort((a,b)=>b.h-a.h),units,top:units.reduce((m,f)=>Math.max(m,f.properties.zt),0)}}
+ return{hits,list:[...bl].map(([id,h])=>({id,h})).sort((a,b)=>b.h-a.h),units,top:units.reduce((m,f)=>Math.max(m,f.properties.zt),0)}}
+const STS={ok:'Sesuai',w1:'1 pelanggaran',bad:'≥2 pelanggaran',n:'Tanpa bangunan'};
+function check(parcel,a,maxH){
+ const A=turf.area(parcel),by=new Map();let inner=null;
+ try{inner=turf.buffer(parcel,-P.gsb,{units:'meters'})}catch(e){}
+ const ok=inner&&inner.geometry,vids=[];
+ a.hits.forEach(f=>{const p=f.properties||{},k=p.id??p.gmlid??f.id;
+  const o=by.get(k)||{ar:0,h:0,out:false};o.ar=Math.max(o.ar,turf.area(f));o.h=Math.max(o.h,hOf(p));
+  let w=false;try{w=ok&&turf.booleanWithin(f,inner)}catch(e){}
+  if(!w){o.out=true;vids.push(f.id)}by.set(k,o)});
+ let fa=0,fl=0,viol=0;by.forEach(o=>{fa+=o.ar;fl+=o.ar*Math.max(1,Math.ceil(o.h/P.fl));if(o.out)viol++});
+ const c={A,n:by.size,kdb:fa/A*100,klb:fl/A,viol,vids,inner:ok?inner:null,maxH};
+ c.f={kdb:c.kdb>P.kdb,klb:c.klb>P.klb,gsb:viol>0,h:maxH>LIMIT};
+ const cnt=Object.values(c.f).filter(Boolean).length;
+ c.status=!c.n&&!a.units.length?'n':cnt===0?'ok':cnt===1?'w1':'bad';return c}
+const cmp=c=>c.n?`<table style="margin-bottom:8px"><tr><td>Parameter</td><td>Nilai</td><td>Batas</td><td></td></tr>${[['KDB',n(c.kdb)+'%','≤ '+P.kdb+'%',c.f.kdb],['KLB',n(c.klb,2),'≤ '+P.klb,c.f.klb],['GSB',c.viol+' bgn',' ≥ '+P.gsb+' m',c.f.gsb],['Tinggi',n(c.maxH)+' m','≤ '+LIMIT+' m',c.f.h]].map(([l,v,m,b])=>`<tr><td>${l}</td><td>${v}</td><td style="color:var(--m)">${m}</td><td><span class="bdg ${b?'o':'g'}">${b?'Melanggar':'Sesuai'}</span></td></tr>`).join('')}</table><div class="hint" style="margin:0 0 8px">Estimasi: luas tapak per ID bangunan, 1 lantai = ${P.fl} m. Bangunan di luar zona sempadan (garis oranye) ditandai oranye di peta.</div>`:'';
+function clearGsb(){gsbIds.forEach(id=>map.setFeatureState({source:'sanur-src',id},{gsb:false}));gsbIds=[];const s=map.getSource('gsb-src');if(s)s.setData({type:'FeatureCollection',features:[]})}
+function showComp(c){clearGsb();if(!c)return;gsbIds=c.vids;c.vids.forEach(id=>map.setFeatureState({source:'sanur-src',id},{gsb:true}));
+ const s=map.getSource('gsb-src');if(s&&c.inner)s.setData({type:'Feature',geometry:c.inner.geometry,properties:{}})}
 function parcelHTML(parcel){
  const a=analyze(parcel),p=parcel.properties,maxH=Math.max(a.list[0]?a.list[0].h:0,a.top);
- const has=a.list.length||a.units.length;
+ const has=a.list.length||a.units.length,c=check(parcel,a,maxH);lastC=c;
  const over=a.list.filter(x=>x.h>LIMIT).length;
  const v=!has?`<div class="verdict na">Tidak ada data bangunan 3D di atas bidang ini.</div>`
   :maxH>LIMIT?`<div class="verdict bad">⚠ Melebihi batas ${LIMIT} m — tertinggi ${n(maxH)} m (+${n(maxH-LIMIT)} m)</div>`
@@ -408,13 +453,13 @@ function parcelHTML(parcel){
  const bars=a.list.slice(0,8).map(x=>`<div class="bar"><div><span>${x.id}</span><b>${n(x.h)} m</b></div><i><u class="${x.h>LIMIT?'o':''}" style="width:${Math.min(100,x.h/Math.max(LIMIT*1.5,maxH)*100)}%"></u></i></div>`).join('');
  return`<div class="nib"><small>NIB</small><b>${p.NIB}</b></div>
  <div class="stats"><div class="stat"><b>${a.list.length}</b><span>Bangunan</span></div><div class="stat"><b>${n(maxH)}</b><span>Tertinggi (m)</span></div><div class="stat"><b style="color:${over?'#fca5a5':'var(--ok)'}">${over}</b><span>Melebihi</span></div></div>
- ${v}${a.units.length?`<div class="hint" style="margin:0 0 8px">Bhumitara: ${a.units.length} unit, ±${Math.ceil(a.top/3)} lantai (puncak ${n(a.top)} m)</div>`:''}
+ ${v}${cmp(c)}${a.units.length?`<div class="hint" style="margin:0 0 8px">Bhumitara: ${a.units.length} unit, ±${Math.ceil(a.top/3)} lantai (puncak ${n(a.top)} m)</div>`:''}
  ${bars}<details open><summary>Atribut bidang</summary>${propsTbl(p)}</details>`}
 function showParcel(nib){
  const f=pIdx.get(String(nib));if(!f)return;
  clearSel(true);pSel=f.properties.NIB;lastParcel=f;
  map.setFeatureState({source:'parcel-src',id:pSel},{selected:true});
- $('parcel-out').innerHTML=parcelHTML(f);tab('a');$('side').classList.remove('hide')}
+ $('parcel-out').innerHTML=parcelHTML(f);showComp(lastC);tab('a');$('side').classList.remove('hide')}
 function findNIB(){
  const v=$('q-nib').value.trim();if(!v)return;
  const f=pIdx.get(v);if(!f)return toast(`NIB "${v}" tidak ditemukan`);
@@ -430,6 +475,30 @@ map.on('click',e=>{
  if(f=q('parcel-fill')){return pSel!==null&&String(pSel)===String(f.properties.NIB)?clearSel(true):showParcel(f.properties.NIB)}
  clearSel(true)});
 
+[['kdb','p-kdb'],['klb','p-klb'],['gsb','p-gsb'],['fl','p-fl']].forEach(([k,id])=>$(id).onchange=e=>{P[k]=+e.target.value||P[k];if(lastParcel){$('parcel-out').innerHTML=parcelHTML(lastParcel);showComp(lastC)}});
+const scanColor=['case',SEL,'#22d3ee',['match',['get','sts'],'ok','#34d399','w1','#fbbf24','bad','#ef4444','#94a3b8']];
+async function scan(){
+ if(!pData||!sData)return toast('Data bidang / bangunan belum termuat');
+ $('b-scan').disabled=true;scanRows=[];const fs=pData.features;
+ for(let i=0;i<fs.length;i++){
+  const f=fs[i],a=analyze(f),mh=Math.max(a.list[0]?a.list[0].h:0,a.top),c=check(f,a,mh);
+  f.properties.sts=c.status;
+  scanRows.push({nib:f.properties.NIB,A:c.A,n:c.n,h:mh,kdb:c.kdb,klb:c.klb,gsb:c.viol,st:c.status,k:Object.values(c.f).filter(Boolean).length});
+  if(i%20===0){$('scan-out').innerHTML=`<div class="ph">Memindai ${i+1} / ${fs.length}…</div>`;await new Promise(r=>setTimeout(r))}}
+ map.getSource('parcel-src').setData(pData);
+ map.setPaintProperty('parcel-fill','fill-color',scanColor);map.setPaintProperty('parcel-fill','fill-opacity',.5);stack[0].op=.5;renderLayers();
+ const cn=k=>scanRows.filter(r=>r.st===k).length,bad=scanRows.filter(r=>r.k).sort((a,b)=>b.k-a.k||b.h-a.h).slice(0,12);
+ $('scan-out').innerHTML=`<div class="stats"><div class="stat"><b style="color:var(--ok)">${cn('ok')}</b><span>Sesuai</span></div><div class="stat"><b style="color:var(--g)">${cn('w1')}</b><span>1 pelanggaran</span></div><div class="stat"><b style="color:#fca5a5">${cn('bad')}</b><span>≥2 pelanggaran</span></div></div>
+ <div class="lg"><span><i style="--k:#34d399"></i>Sesuai</span><span><i style="--k:#fbbf24"></i>1</span><span><i style="--k:#ef4444"></i>≥2</span><span><i style="--k:#94a3b8"></i>Tanpa bangunan</span></div>
+ <h3>Prioritas pemeriksaan</h3>${bad.map(r=>`<div class="it" onclick="goNIB('${r.nib}')"><span>NIB ${r.nib}</span><span style="color:var(--m)">${n(r.h)} m · KDB ${n(r.kdb,0)}% · KLB ${n(r.klb,1)}</span><b style="color:#fca5a5">${r.k}✕</b></div>`).join('')||'<div class="hint">Tidak ada pelanggaran.</div>'}
+ <button class="btn" style="margin-top:10px;width:100%" onclick="csv()">⬇ Unduh laporan CSV</button>`;
+ $('b-scan').disabled=false}
+function goNIB(v){$('q-nib').value=v;findNIB()}
+function csv(){
+ const r=[['NIB','Luas_m2','Jumlah_bangunan','Tinggi_maks_m','KDB_persen','KLB','Bangunan_langgar_GSB','Status'],...scanRows.map(x=>[x.nib,n(x.A,0),x.n,n(x.h),n(x.kdb),n(x.klb,2),x.gsb,STS[x.st]])];
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+r.map(x=>x.join(',')).join('\n')],{type:'text/csv'}));a.download='laporan_kesesuaian_tata_ruang.csv';a.click()}
+$('b-scan').onclick=scan;
+$('b-rs').onclick=()=>{if(!map.getLayer('parcel-fill'))return;map.setPaintProperty('parcel-fill','fill-color',['case',SEL,'#22d3ee','#f2b441']);map.setPaintProperty('parcel-fill','fill-opacity',.25);stack[0].op=.25;renderLayers()};
 /* ---------- drawing ---------- */
 const draw=new MapboxDraw({displayControlsDefault:false,styles:[
  {id:'d-line',type:'line',filter:['all',['==','$type','LineString'],['!=','mode','static']],paint:{'line-color':'#22d3ee','line-width':3}},
@@ -457,7 +526,9 @@ map.on('load',()=>{
   map.addSource('parcel-src',{type:'geojson',data:d,promoteId:'NIB'});
   map.addLayer({id:'parcel-fill',type:'fill',source:'parcel-src',paint:{'fill-color':['case',SEL,'#22d3ee','#f2b441'],'fill-opacity':.25}});
   map.addLayer({id:'parcel-line',type:'line',source:'parcel-src',paint:{'line-color':'#f2b441','line-width':1.2}});
+  map.addSource('gsb-src',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
   map.addLayer({id:'parcel-hl',type:'line',source:'parcel-src',paint:{'line-color':['case',SEL,'#22d3ee','rgba(0,0,0,0)'],'line-width':4}});
+  map.addLayer({id:'gsb-line',type:'line',source:'gsb-src',paint:{'line-color':'#fb923c','line-width':2.5,'line-dasharray':[2,2]}});
   if(d.features.length)map.fitBounds(turf.bbox(d),{padding:{top:100,bottom:60,left:400,right:60}});
  }).catch(()=>toast('SanurParcel.geojson tidak ditemukan'));
 
@@ -480,7 +551,6 @@ map.on('load',()=>{
   map.addSource('bhu-body-src',{type:'geojson',data:d});
   map.addLayer({id:'bhu-slab',type:'fill-extrusion',source:'bhu-src',paint:{'fill-extrusion-color':'#0f172a','fill-extrusion-base':['get','zb'],'fill-extrusion-height':['+',['get','zb'],.25],'fill-extrusion-opacity':.95}});
   map.addLayer({id:'bhu-3d',type:'fill-extrusion',source:'bhu-body-src',paint:{'fill-extrusion-color':bhuColor(),'fill-extrusion-base':['+',['get','zb'],.25],'fill-extrusion-height':['get','zt'],'fill-extrusion-opacity':.95}});
-  map.addLayer({id:'bhu-line',type:'line',source:'bhu-src',paint:{'line-color':'#ffffff','line-width':1,'line-opacity':.5}});
   applyZ(zMin);
  }).catch(()=>toast('Bhumitara_DPS.geojson tidak ditemukan'));
 
